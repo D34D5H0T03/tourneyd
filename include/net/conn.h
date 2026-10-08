@@ -22,7 +22,7 @@ ssize_t conn_read(conn_t *connected_client, void* buffer, size_t n);
 int conn_write_all(conn_t *connected_client, const void* buffer, size_t n);
 
 // safely closes connection
-void conn_close(const conn_t *connected_client);
+void conn_close(conn_t *connected_client);
 
 // For utility
 // gets client ip address and turns it into readable string 
