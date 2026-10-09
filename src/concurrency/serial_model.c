@@ -18,5 +18,5 @@ int concurrency_run(int listen_fd, conn_handler_fn handler){
 }
 
 void concurrency_shutdown(void){
-    // placeholder
+    // leave for hardening phase
 }
