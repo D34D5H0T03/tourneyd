@@ -1,6 +1,7 @@
 #ifndef PARSER_H_INCLUDED
 #define PARSER_H_INCLUDED
 
+#include "status.h"
 #include <stddef.h>
 
 // strict fields to prevent buffer overflows or Dos attacks
@@ -8,6 +9,7 @@
 #define MAX_HEADER_NAME    64
 #define MAX_HEADER_VALUE   512
 #define MAX_PATH_LENGTH    1024
+#define MAX_QUERY_LENGTH   1024
 #define MAX_METHOD_LENGTH  16
 #define MAX_VERSION_LENGTH 16
 #define MAX_LINE_LENGTH    4096
@@ -34,6 +36,8 @@ typedef enum {
     METHOD_OPTIONS,
 } http_method_t;
 
+
+
 typedef struct {
     char name[MAX_HEADER_NAME];
     char value[MAX_HEADER_VALUE];
@@ -43,6 +47,7 @@ typedef struct {
 typedef struct {
     http_method_t method;
     char path[MAX_PATH_LENGTH];
+    char query[MAX_QUERY_LENGTH];
     char version[MAX_VERSION_LENGTH];
 
     http_header_t headers[MAX_HEADERS];
@@ -53,7 +58,7 @@ typedef struct {
     char  *body;              // malloc, need freeing and handle dangling pointer
 
     parser_state_t state;
-    int error_status;         // 400, 413, 414, 431, 501, 505 when state == PARSE_ERROR
+    http_status_t error_status;         // 400, 413, 414, 431, 501, 505 when state == PARSE_ERROR
 } http_request_t;
 
 // initializes the http object

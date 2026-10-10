@@ -13,7 +13,7 @@
 static const char *find_crlf(const char *buf, size_t len){
     for(size_t i = 0; i + 1 < len; i++){
         if(buf[i] == '\r' && buf[i + 1] == '\n'){
-            return buf + 1;
+            return buf + i;
         }
     }
     return NULL;
@@ -27,7 +27,7 @@ static http_method_t method_from_str(const char *s, size_t n){
         {"HEAD", METHOD_HEAD},
         {"PUT", METHOD_PUT},
         {"DELETE", METHOD_DELETE},
-        {"PATHCH", METHOD_PATCH},
+        {"PATCH", METHOD_PATCH},
         {"OPTIONS", METHOD_OPTIONS},
     };
 
@@ -40,73 +40,112 @@ static http_method_t method_from_str(const char *s, size_t n){
     return METHOD_UNKNOWN; // method not matching with those supported
 }
 
-// Request line and header parsers
+// Request line and header parsers. returns http_status_ok on success. error code on failure
 
-static int parse_request_line(http_request_t *req, const char *line, size_t len){
+static http_status_t parse_request_line(http_request_t *req, const char *line, size_t len){
     const char *sp1 = memchr(line, ' ', len);
     if(!sp1){
-        return 400;
+        return HTTP_STATUS_BAD_REQUEST;
     }
 
-    const char *sp2 = memchr(sp1 + 1, ' ', (size_t)(sp1 + 1 - line));
+    const char *sp2 = memchr(sp1 + 1, ' ', len - (size_t)(sp1 + 1 - line));
     if(!sp2){
-        return 400;
+        return HTTP_STATUS_BAD_REQUEST;
     }
 
-    size_t mlen = (size_t)(sp1 - line); //method length
-    size_t plen = (size_t)(sp2 - (sp1 + 1)); //path length
+    size_t mlen = (size_t)(sp1 - line); // method length
+    size_t plen = (size_t)(sp2 - (sp1 + 1)); // full URI length
     size_t vlen = len - (size_t)(sp2 + 1 - line); // version length
 
-    if(mlen == 0 || plen == 0 || vlen == 0) return 400; 
-    if(mlen >= MAX_METHOD_LENGTH) return 501;
-    if(plen >= MAX_PATH_LENGTH) return 414;
-    if(vlen >= MAX_VERSION_LENGTH) return 505;
+    if(mlen == 0 || plen == 0 || vlen == 0){
+        return HTTP_STATUS_BAD_REQUEST; 
+    }
+    if(mlen >= MAX_METHOD_LENGTH){
+        return HTTP_STATUS_NOT_IMPLEMENTED;
+    }
+    if(vlen >= MAX_VERSION_LENGTH){
+        return HTTP_STATUS_VERSION_NOT_SUPPORTED;
+    }
 
     req->method = method_from_str(line, mlen);
-    if(req->method == METHOD_UNKNOWN) return 501;
-
-    const char *path = sp1 + 1; // first byte of path
-    if(path[0] != '/') return 400; // path must start with / like /index.html
-    for(size_t i = 0; i < plen; i++){ 
-        // reject control characters
-        if((unsigned char)path[i] < 0x20 || path[i] == 0x7f){
-            return 400;
-        } 
+    if(req->method == METHOD_UNKNOWN){
+        return HTTP_STATUS_NOT_IMPLEMENTED;
     }
 
-    // copying path and version
-    memcpy(req->path, path, plen);
-    req->path[plen] = '\0'; // appending null terminator
+    const char *path = sp1 + 1; // first byte of URI
+    if(path[0] != '/'){
+        return HTTP_STATUS_BAD_REQUEST; 
+    }
+
+    for (size_t i = 0; i < plen; i++) {
+        if ((unsigned char)path[i] < 0x20 || path[i] == 0x7f){
+            return HTTP_STATUS_BAD_REQUEST;
+        }
+    }
+
+    const char *query_ptr = memchr(path, '?', plen); 
+    
+    if (query_ptr) { 
+        size_t path_len = (size_t)(query_ptr - path); 
+        size_t query_len = plen - path_len - 1; 
+
+        // Enforces memory boundaries independently
+        if (path_len >= MAX_PATH_LENGTH || query_len >= MAX_QUERY_LENGTH) {
+            return HTTP_STATUS_URI_TOO_LONG;
+        }
+
+        // Reject control characters in the base path
+        for(size_t i = 0; i < path_len; i++){ 
+            if((unsigned char)path[i] < 0x20 || path[i] == 0x7f) return HTTP_STATUS_BAD_REQUEST;
+        }
+
+        memcpy(req->path, path, path_len); 
+        req->path[path_len] = '\0'; 
+        
+        memcpy(req->query, query_ptr + 1, query_len); 
+        req->query[query_len] = '\0'; 
+    } 
+    else { 
+        if (plen >= MAX_PATH_LENGTH) {
+            return HTTP_STATUS_URI_TOO_LONG;
+        }
+
+        memcpy(req->path, path, plen); 
+        req->path[plen] = '\0'; 
+        req->query[0] = '\0'; 
+    }
+    
+    // Copying version
     memcpy(req->version, sp2 + 1, vlen);
-    req->version[vlen] == '\0';
+    req->version[vlen] = '\0';
 
-    // supported versions
+    // Supported versions
     if(strcmp(req->version, "HTTP/1.0") != 0 && strcmp(req->version, "HTTP/1.1") != 0){
-        return 505;
+        return HTTP_STATUS_VERSION_NOT_SUPPORTED;
     }
 
-    return 0;
+    return HTTP_STATUS_OK;
 }
 
-static int parse_header_line(http_request_t *req, const char *line, size_t len){
+static http_status_t parse_header_line(http_request_t *req, const char *line, size_t len){
     if (req->header_count >= MAX_HEADERS){
-        return 431;
+        return HTTP_STATUS_HEADER_TOO_LARGE;
     }
 
     const char *colon = memchr(line, ':', len);
     if(!colon || colon == line){
-        return 400;
+        return HTTP_STATUS_BAD_REQUEST;
     }
     
     size_t nlen = (size_t)(colon - line); // header name
     if(nlen >= MAX_HEADER_NAME){
-        return 431;
+        return HTTP_STATUS_HEADER_TOO_LARGE;
     }  
 
     // no whitespace allowed in name (e.g content-length:)
     for(size_t i = 0; i < nlen; i++){
         if(line[i] == ' ' || line[i] == '\t'){
-            return 400;
+            return HTTP_STATUS_BAD_REQUEST;
         }
     }
 
@@ -121,7 +160,7 @@ static int parse_header_line(http_request_t *req, const char *line, size_t len){
         vlen--;
     }
 
-    if(vlen >= MAX_HEADER_VALUE) return 431;
+    if(vlen >= MAX_HEADER_VALUE) return HTTP_STATUS_HEADER_TOO_LARGE;
 
     http_header_t *h = &req->headers[req->header_count++];
     memcpy(h->name, line, nlen);
@@ -130,25 +169,25 @@ static int parse_header_line(http_request_t *req, const char *line, size_t len){
     memcpy(h->value, v, vlen);
     h->value[vlen] = '\0';
 
-    return 0;
+    return HTTP_STATUS_OK;
 
 }
 
 // Called when the blank line ending the headers is seen. it decides if parse body or done
-static int finish_headers(http_request_t *req){
+static http_status_t finish_headers(http_request_t *req){
     if(http_request_header(req, "Transfer-Encoding")){
-        return 501; // chunked bodies not supported
+        return HTTP_STATUS_NOT_IMPLEMENTED; // chunked bodies not supported
     }
 
     const char *c1 = http_request_header(req, "Content-Length");
         if(!c1){
             // no body to parse, parsing done
             req->state = PARSE_DONE;
-            return 0;
+            return HTTP_STATUS_OK;
         }
 
     if(*c1 == '\0'){
-        return 400;
+        return HTTP_STATUS_BAD_REQUEST;
     }
 
     // find content length value
@@ -156,12 +195,12 @@ static int finish_headers(http_request_t *req){
     
     for(const char *p = c1; *p; p++){
         if (*p < '0' || *p > '9'){
-            return 400; 
+            return HTTP_STATUS_BAD_REQUEST; 
         }
         body_size = body_size * 10 + (size_t)(*p - '0');
 
         if(body_size > MAX_BODY_SIZE){
-            return 431;
+            return HTTP_STATUS_PAYLOAD_TOO_LARGE;
         }
     }
 
@@ -169,19 +208,21 @@ static int finish_headers(http_request_t *req){
 
     if(body_size == 0){
         req->state = PARSE_DONE;
-        return 0;
+        return HTTP_STATUS_OK;
     }
     req->body = malloc(body_size + 1);
     if(!req->body){
-        return 500; //malloc failed
+        return HTTP_STATUS_INTERNAL_SERVER_ERROR; //malloc failed
     }
     req->state = PARSE_BODY;
+    return HTTP_STATUS_OK;
 }
 
 void http_request_init(http_request_t *req){
     memset(req, 0, sizeof(*req)); // zero out everything
     req->state = PARSE_REQ_LINE; // start of parsing
     req->method = METHOD_UNKNOWN;
+    req->query[0] = '\0';
 }
 
 void http_request_free(http_request_t *req){
@@ -216,7 +257,7 @@ size_t http_parse(http_request_t *req, const char* buffer, size_t buffer_len){
             consumed += take;
 
             if(req->body_received == req->content_length){
-                req->body[req->content_length] == '\0'; //appending the null character at the end of string
+                req->body[req->content_length] = '\0'; //appending the null character at the end of string
                 req->state = PARSE_DONE; //done with parsing
             }
 
@@ -229,7 +270,8 @@ size_t http_parse(http_request_t *req, const char* buffer, size_t buffer_len){
 
         if(!crlf){
             if(avail > MAX_LINE_LENGTH){ //ENDLESS LINE
-                req->error_status = (req->state == PARSE_REQ_LINE) ? 414 : 431;
+                req->error_status = (req->state == PARSE_REQ_LINE) ?
+                 HTTP_STATUS_URI_TOO_LONG : HTTP_STATUS_HEADER_TOO_LARGE;
                 req->state = PARSE_ERROR;
             }
             break; // NEED_MORE
@@ -238,16 +280,16 @@ size_t http_parse(http_request_t *req, const char* buffer, size_t buffer_len){
         // full line found
         size_t line_len = (size_t)(crlf - cur);
         if(line_len > MAX_LINE_LENGTH){
+            req->error_status = HTTP_STATUS_HEADER_TOO_LARGE;
             req->state = PARSE_ERROR;
-            req->error_status = 431;
             break;
         }
 
         // request line parsing
-        int status = 0;
+        http_status_t status = HTTP_STATUS_OK;
         if(req->state == PARSE_REQ_LINE){
             status = parse_request_line(req, cur, line_len);
-            if(status == 0){
+            if(status == HTTP_STATUS_OK){
                 req->state = PARSE_HEADERS;
             }
         }
@@ -260,9 +302,9 @@ size_t http_parse(http_request_t *req, const char* buffer, size_t buffer_len){
             }
         }
 
-        if(!status != 0){
-            req->state = PARSE_ERROR;
+        if(status != HTTP_STATUS_OK){
             req->error_status = status;
+            req->state = PARSE_ERROR;
             break;
         }
         consumed += line_len + 2; // line + crlf
