@@ -31,6 +31,7 @@ typedef enum {
     METHOD_PUT,
     METHOD_DELETE,
     METHOD_PATCH,
+    METHOD_OPTIONS,
 } http_method_t;
 
 typedef struct {
