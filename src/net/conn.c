@@ -5,7 +5,7 @@
 
 #include "../../include/net/conn.h"
 
-int conn_accept(int listen_fd, conn_t* out){
+int conn_accept(int listen_fd, conn_t *out){
     out->peer_len = sizeof(out->peer); // setting capacity limit to 128 bytes
 
     while(1){
@@ -25,7 +25,7 @@ int conn_accept(int listen_fd, conn_t* out){
 }
 
 // reads up to n bytes form the TCP reliable pipe socket fd.
-ssize_t conn_read(conn_t *connected_client, void* buffer, size_t n){
+ssize_t conn_read(conn_t *connected_client, void *buffer, size_t n){
     while(1){
         // ssize_t is signed size type, so can send back -1
         ssize_t bytes_read = read(connected_client->fd, buffer, n); // reads bytes and sends back bytes read
@@ -43,10 +43,10 @@ ssize_t conn_read(conn_t *connected_client, void* buffer, size_t n){
 }
 
 
-int conn_write_all(conn_t* connected_client, const void* buffer, size_t n){
+int conn_write_all(conn_t *connected_client, const void *buffer, size_t n){
     size_t remaining = n;
 
-    const char* p = buffer; // pointer to the buffer
+    const char *p = buffer; // pointer to the buffer
 
     while(remaining > 0){
         ssize_t written = write(connected_client->fd, p, remaining);
@@ -64,7 +64,7 @@ int conn_write_all(conn_t* connected_client, const void* buffer, size_t n){
 }
 
 // close the TCP secure socket.
-void conn_close(conn_t* connected_client){
+void conn_close(conn_t *connected_client){
     if(connected_client->fd >= 0){
         close(connected_client->fd);
         connected_client->fd = -1;

@@ -7,7 +7,7 @@
 
 #include "../../include/net/listener.h"
 
-int listener_create(const char* port, int backlog){
+int listener_create(const char *port, int backlog){
     struct addrinfo hints; // Hints for addrinfo to specify waht connection I want
     struct addrinfo *res; // Pointer to the head of the returned linked list
     struct addrinfo *p; // pointer to iterate through res
