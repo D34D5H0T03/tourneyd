@@ -5,6 +5,8 @@
 #include "concurrency/concurrency.h"
 #include "handlers/http_handler.h"
 #include "util/log.h"
+#include "router/router.h"
+#include "handlers/hello.h"
 
 // default server configurations
 #define DEFAULT_PORT "8080"
@@ -18,6 +20,10 @@ int main(void) {
 
     const char *port = DEFAULT_PORT;
     int backlog = DEFAULT_BACKLOG; 
+
+    router_init();
+    router_add(METHOD_GET, "/", hello_handler);
+    router_add(METHOD_POST, "/upper", upper_handler);
 
     log_info("Starting tourneyd on port %s...", port);
     

@@ -4,6 +4,7 @@
 #include "http/status.h"
 #include "net/conn.h"
 #include "util/log.h"
+#include "router/router.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -16,19 +17,6 @@
    buffer can never fill completely without the parser reaching a verdict. */
 
 // helper functions
-// helper to print the parsed method
-static const char* method_to_str(http_method_t m) {
-    switch(m) {
-        case METHOD_GET: return "GET";
-        case METHOD_POST: return "POST";
-        case METHOD_HEAD: return "HEAD";
-        case METHOD_PUT: return "PUT";
-        case METHOD_DELETE: return "DELETE";
-        case METHOD_PATCH: return "PATCH";
-        case METHOD_OPTIONS: return "OPTIONS";
-        default: return "UNKNOWN";
-    }
-}
 
 // reads from client untill parser reaches DONE or ERROR
 static int read_request(conn_t *client, http_request_t *req){
@@ -49,13 +37,6 @@ static int read_request(conn_t *client, http_request_t *req){
     }
 
     return (req->state == PARSE_DONE) ? 1 : 0;
-}
-
-// temporary only, will be replaced with router
-static void dispatch_stub(const http_request_t *req, http_response_t *res){
-    (void)req;
-    res->status = HTTP_STATUS_OK;
-    http_response_set_body(res, "Hello\n", 6, "text/plain; charset=utf-8");
 }
 
 // sends head then body, returns 0 on success -1 on failure
@@ -105,7 +86,7 @@ void http_connection_handle(conn_t *client){
         http_response_set_error(res, req->error_status);
     }
     else{
-        dispatch_stub(req, res);
+        router_dispatch(req, res);
     }
 
     send_response(client, res, req, 0); // keep alive is 0 for now

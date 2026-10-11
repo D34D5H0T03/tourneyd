@@ -73,4 +73,7 @@ size_t http_parse(http_request_t *req, const char *buffer, size_t buffer_len);
 // requests header
 const char *http_request_header(const http_request_t *req, const char *name);
 
+// converts method to str
+const char *http_method_to_str(http_method_t m);
+
 #endif // PARSER_H
