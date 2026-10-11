@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -6,6 +5,7 @@
 #include <netdb.h>
 
 #include "../../include/net/listener.h"
+#include "../../include/util/log.h"
 
 int listener_create(const char *port, int backlog){
     struct addrinfo hints; // Hints for addrinfo to specify waht connection I want
@@ -25,7 +25,7 @@ int listener_create(const char *port, int backlog){
     // getting the linked list of available addresses for the port
     int status = getaddrinfo(NULL, port, &hints, &res);
     if(status != 0){
-        fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+        log_error("getaddrinfo error: %s", gai_strerror(status));
         return listener_fd; // -1 failure
     }
 
@@ -40,7 +40,7 @@ int listener_create(const char *port, int backlog){
 
         // settign socket option so port can be resued after ctr+c duuring debugging
         if(setsockopt(listener_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1){
-            fprintf(stderr, "Set socket option failed.\n");
+            log_error("Set socket option failed.");
             close(listener_fd);
             freeaddrinfo(res);
             return -1;
@@ -59,7 +59,7 @@ int listener_create(const char *port, int backlog){
     freeaddrinfo(res); // free the addrinfo struct
 
     if(listen(listener_fd, backlog) < 0){
-        fprintf(stderr, "listen failed\n");
+        log_error("listen failed");
         close(listener_fd);
         return -1; // listen failure
     }

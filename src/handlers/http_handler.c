@@ -1,5 +1,6 @@
 #include "../../include/handlers/http_handler.h"
 #include "../../include/http/parser.h"
+#include "../../include/util/log.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -47,20 +48,10 @@ void http_test_handle(conn_t *client) {
 
         // Check if the state machine reached a terminal state
         if (req.state == PARSE_DONE) {
-            printf("\n========== NEW REQUEST ==========\n");
-            printf("Method: %s\n", method_to_str(req.method));
-            printf("Path: %s\n", req.path);
-            printf("Version: %s\n", req.version);
-            printf("Headers (%d):\n", req.header_count);
-            
-            for (int i = 0; i < req.header_count; i++) {
-                printf("  %s: %s\n", req.headers[i].name, req.headers[i].value);
-            }
-            
-            if (req.content_length > 0) {
-                printf("\nBody (%zu bytes):\n%s\n", req.content_length, req.body);
-            }
-            printf("=================================\n\n");
+             // log it
+            log_info("Parsed request: %s %s %s (Headers: %d, Body: %zu bytes)", 
+                     method_to_str(req.method), req.path, req.version, 
+                     req.header_count, req.content_length);
 
             // Send a valid HTTP dummy response to satisfy the client
             const char *dummy_resp = "HTTP/1.1 200 OK\r\nContent-Length: 13\r\nConnection: close\r\n\r\nParser Works!";
@@ -68,7 +59,7 @@ void http_test_handle(conn_t *client) {
             break;
             
         } else if (req.state == PARSE_ERROR) {
-            printf("\n[!] PARSE ERROR: Status Code %d\n", req.error_status);
+            log_error("Parse rejected: Status Code %d", req.error_status);
             
             // Send a generic error response back
             const char *err_resp = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";

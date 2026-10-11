@@ -4,6 +4,7 @@
 #include "../include/net/listener.h"
 #include "../include/concurrency/concurrency.h"
 #include "../include/handlers/http_handler.h"
+#include "../include/util/log.h"
 
 int main(void) {
     // Ignore SIGPIPE. If we try to write to a client who suddenly disconnected, 
@@ -14,15 +15,15 @@ int main(void) {
     const char *port = "8080";
     int backlog = 128; 
 
-    printf("Starting tourneyd on port %s...\n", port);
+    log_info("Starting tourneyd on port %s...", port);
     
     int listen_fd = listener_create(port, backlog);
     if (listen_fd < 0) {
-        fprintf(stderr, "Fatal: failed to initialize listener.\n");
+        log_error("Fatal: failed to initialize listener.");
         return 1;
     }
 
-    printf("Successfully listening on port %s\n", port);
+    log_info("Successfully listening on port %s", port);
 
     // passing the file descriptor and the echo handler to the fucntion pointer
     concurrency_run(listen_fd, http_test_handle);
