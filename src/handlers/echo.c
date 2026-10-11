@@ -2,9 +2,10 @@
 
 #include "../../include/handlers/echo.h"
 
+#define ECHO_RECV_BUFFER_SIZE 4096
 
 void echo_handle(conn_t* client){
-    char buffer[4096];
+    char buffer[ECHO_RECV_BUFFER_SIZE];
 
     while(1){
         ssize_t bytes_read = conn_read(client, buffer, sizeof(buffer)); // read untill buffer size

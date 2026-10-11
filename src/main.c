@@ -6,14 +6,18 @@
 #include "../include/handlers/http_handler.h"
 #include "../include/util/log.h"
 
+// default server configurations
+#define DEFAULT_PORT "8080"
+#define DEFAULT_BACKLOG 128
+
 int main(void) {
     // Ignore SIGPIPE. If we try to write to a client who suddenly disconnected, 
     // the OS sends SIGPIPE. The default behavior is to kill the server. 
     // Ignoring it makes write() return -1 instead, which we handle gracefully.
     signal(SIGPIPE, SIG_IGN);
 
-    const char *port = "8080";
-    int backlog = 128; 
+    const char *port = DEFAULT_PORT;
+    int backlog = DEFAULT_BACKLOG; 
 
     log_info("Starting tourneyd on port %s...", port);
     
