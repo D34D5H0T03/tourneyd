@@ -4,6 +4,7 @@
 #include "http/status.h"
 #include "net/conn.h"
 #include "util/log.h"
+#include "router/router.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -36,13 +37,6 @@ static int read_request(conn_t *client, http_request_t *req){
     }
 
     return (req->state == PARSE_DONE) ? 1 : 0;
-}
-
-// temporary only, will be replaced with router
-static void dispatch_stub(const http_request_t *req, http_response_t *res){
-    (void)req;
-    res->status = HTTP_STATUS_OK;
-    http_response_set_body(res, "Hello\n", 6, "text/plain; charset=utf-8");
 }
 
 // sends head then body, returns 0 on success -1 on failure
@@ -92,7 +86,7 @@ void http_connection_handle(conn_t *client){
         http_response_set_error(res, req->error_status);
     }
     else{
-        dispatch_stub(req, res);
+        router_dispatch(req, res);
     }
 
     send_response(client, res, req, 0); // keep alive is 0 for now
