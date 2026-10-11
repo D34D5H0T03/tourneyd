@@ -6,6 +6,11 @@
 #include <string.h>
 #include <strings.h> 
 
+#define ASCII_MIN_PRINTABLE 0x20 // Space character (Start of printable ASCII)
+#define ASCII_DEL 0x7F           // Delete character (End of standard printable ASCII)
+#define CRLF_LEN 2
+
+
 // Helper Functions
 
 
@@ -96,7 +101,10 @@ static http_status_t parse_request_line(http_request_t *req, const char *line, s
 
         // Reject control characters in the base path
         for(size_t i = 0; i < path_len; i++){ 
-            if((unsigned char)path[i] < 0x20 || path[i] == 0x7f) return HTTP_STATUS_BAD_REQUEST;
+            if((unsigned char)path[i] < ASCII_MIN_PRINTABLE ||
+             path[i] == ASCII_DEL){
+                return HTTP_STATUS_BAD_REQUEST;
+             }
         }
 
         memcpy(req->path, path, path_len); 
@@ -307,7 +315,7 @@ size_t http_parse(http_request_t *req, const char* buffer, size_t buffer_len){
             req->state = PARSE_ERROR;
             break;
         }
-        consumed += line_len + 2; // line + crlf
+        consumed += line_len + CRLF_LEN; // line + crlf
     }
 
     return consumed;
