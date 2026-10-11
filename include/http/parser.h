@@ -1,7 +1,7 @@
 #ifndef PARSER_H_INCLUDED
 #define PARSER_H_INCLUDED
 
-#include "status.h"
+#include "http/status.h"
 #include <stddef.h>
 
 // strict fields to prevent buffer overflows or Dos attacks

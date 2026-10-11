@@ -4,8 +4,8 @@
 #include <sys/socket.h>
 #include <netdb.h>
 
-#include "../../include/net/listener.h"
-#include "../../include/util/log.h"
+#include "net/listener.h"
+#include "util/log.h"
 
 int listener_create(const char *port, int backlog){
     struct addrinfo hints; // Hints for addrinfo to specify waht connection I want

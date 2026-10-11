@@ -1,7 +1,7 @@
 #ifndef CONCURRENCY_H
 #define CONCURRENCY_H
 
-#include "../net/conn.h"
+#include "net/conn.h"
 
 // Define a function pointer type for handlers (like echo_handle)
 typedef void (*conn_handler_fn)(conn_t *client);

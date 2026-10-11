@@ -3,7 +3,7 @@
 #include <string.h>
 #include <netdb.h>
 
-#include "../../include/net/conn.h"
+#include "net/conn.h"
 
 int conn_accept(int listen_fd, conn_t *out){
     out->peer_len = sizeof(out->peer); // setting capacity limit to 128 bytes

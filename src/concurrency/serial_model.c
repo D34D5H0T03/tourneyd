@@ -1,4 +1,4 @@
-#include "../../include/concurrency/concurrency.h"
+#include "concurrency/concurrency.h"
 
 int concurrency_run(int listen_fd, conn_handler_fn handler){
     while(1){
