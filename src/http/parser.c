@@ -23,6 +23,20 @@ static const char *find_crlf(const char *buf, size_t len){
     return NULL;
 }
 
+// helper to print the parsed method
+const char* http_method_to_str(http_method_t m) {
+    switch(m) {
+        case METHOD_GET: return "GET";
+        case METHOD_POST: return "POST";
+        case METHOD_HEAD: return "HEAD";
+        case METHOD_PUT: return "PUT";
+        case METHOD_DELETE: return "DELETE";
+        case METHOD_PATCH: return "PATCH";
+        case METHOD_OPTIONS: return "OPTIONS";
+        default: return "UNKNOWN";
+    }
+}
+
 static http_method_t method_from_str(const char *s, size_t n){
     // table for strings to enum methods
     static const struct {const char *name; http_method_t m; } table[] = {

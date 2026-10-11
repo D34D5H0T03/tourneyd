@@ -16,19 +16,6 @@
    buffer can never fill completely without the parser reaching a verdict. */
 
 // helper functions
-// helper to print the parsed method
-static const char* method_to_str(http_method_t m) {
-    switch(m) {
-        case METHOD_GET: return "GET";
-        case METHOD_POST: return "POST";
-        case METHOD_HEAD: return "HEAD";
-        case METHOD_PUT: return "PUT";
-        case METHOD_DELETE: return "DELETE";
-        case METHOD_PATCH: return "PATCH";
-        case METHOD_OPTIONS: return "OPTIONS";
-        default: return "UNKNOWN";
-    }
-}
 
 // reads from client untill parser reaches DONE or ERROR
 static int read_request(conn_t *client, http_request_t *req){
