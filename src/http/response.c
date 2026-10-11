@@ -54,7 +54,7 @@ static int set_header(http_response_t *res, const char *name, const char *value)
         }
     }
 
-    return response_add_header(res, name, value);
+    return http_response_add_header(res, name, value);
 }
 
 // appends formatted text to buffer 1 on success, 0 if too large
@@ -93,19 +93,19 @@ static int is_reserved(const char *name){
 // public API 
 
 // initialize the response struct as empty
-void response_init(http_response_t *res){
+void http_response_init(http_response_t *res){
     memset(res, 0, sizeof(*res));
     res->status = HTTP_STATUS_OK;
 }
 
 // free the body of response
-void response_free(http_response_t *res){
+void http_response_free(http_response_t *res){
     free(res->body);
     res->body = NULL;
     res->body_len =0;
 }
 
-int response_add_header(http_response_t *res, const char *name, const char *value){
+int http_response_add_header(http_response_t *res, const char *name, const char *value){
     // guard clauses
     if(header_is_valid(name, value) < 0){
         return -1;
@@ -122,7 +122,7 @@ int response_add_header(http_response_t *res, const char *name, const char *valu
     return 0; // sucessfully added header
 }
 
-int response_set_body(http_response_t *res, const void *data, size_t len, const char *content_type){
+int http_response_set_body(http_response_t *res, const void *data, size_t len, const char *content_type){
     char *copy = NULL;
 
     if(len > 0){
@@ -142,7 +142,7 @@ int response_set_body(http_response_t *res, const void *data, size_t len, const 
     return 0;
 }
 
-void response_set_error(http_response_t *res, http_status_t code){
+void http_response_set_error(http_response_t *res, http_status_t code){
     // error page
     char page[ERROR_PAGE_BUFFER_SIZE];
 
@@ -154,12 +154,12 @@ void response_set_error(http_response_t *res, http_status_t code){
         n = 0;
     }
 
-    response_free(res); 
+    http_response_free(res); 
     res->status = code;
-    response_set_body(res, page, (size_t)n, "text/html; charset=utf-8");
+    http_response_set_body(res, page, (size_t)n, "text/html; charset=utf-8");
 }
 
-char *response_serialize_head(const http_response_t *res, int keep_alive, size_t *out_len){
+char *http_response_serialize_head(const http_response_t *res, int keep_alive, size_t *out_len){
 
     // worst case allocation: status line + 4 auto headers + all custom headers
     size_t cap = HEAD_BASE_CAPACITY + (size_t)res->header_count * 

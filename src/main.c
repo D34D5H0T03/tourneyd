@@ -30,7 +30,7 @@ int main(void) {
     log_info("Successfully listening on port %s", port);
 
     // passing the file descriptor and the echo handler to the fucntion pointer
-    concurrency_run(listen_fd, http_test_handle);
+    concurrency_run(listen_fd, http_connection_handle);
     close(listen_fd);
     return 0;
 }
