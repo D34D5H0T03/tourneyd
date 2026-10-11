@@ -1,4 +1,4 @@
-#include "../../include/concurrency/concurrency.h"
+#include "concurrency/concurrency.h"
 #include <unistd.h>
 #include <signal.h>
 #include <sys/wait.h>

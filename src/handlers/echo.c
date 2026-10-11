@@ -1,6 +1,6 @@
 #include <ctype.h> //for toupper()
 
-#include "../../include/handlers/echo.h"
+#include "handlers/echo.h"
 
 #define ECHO_RECV_BUFFER_SIZE 4096
 

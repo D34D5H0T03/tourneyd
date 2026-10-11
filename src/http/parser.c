@@ -1,6 +1,5 @@
 // Supports HTTP/1.0 and HTTP/1.1 only
 
-
 #include "http/parser.h"
 #include <stdlib.h>
 #include <string.h>

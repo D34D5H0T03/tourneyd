@@ -1,4 +1,4 @@
-#include "../../include/util/log.h"
+#include "util/log.h"
 #include <stdio.h>
 #include <time.h>
 #include <unistd.h>

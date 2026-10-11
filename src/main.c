@@ -1,10 +1,10 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <signal.h>
-#include "../include/net/listener.h"
-#include "../include/concurrency/concurrency.h"
-#include "../include/handlers/http_handler.h"
-#include "../include/util/log.h"
+#include "net/listener.h"
+#include "concurrency/concurrency.h"
+#include "handlers/http_handler.h"
+#include "util/log.h"
 
 // default server configurations
 #define DEFAULT_PORT "8080"
@@ -30,7 +30,7 @@ int main(void) {
     log_info("Successfully listening on port %s", port);
 
     // passing the file descriptor and the echo handler to the fucntion pointer
-    concurrency_run(listen_fd, http_test_handle);
+    concurrency_run(listen_fd, http_connection_handle);
     close(listen_fd);
     return 0;
 }

@@ -1,10 +1,22 @@
-#include "../../include/handlers/http_handler.h"
-#include "../../include/http/parser.h"
-#include "../../include/util/log.h"
-#include <stdio.h>
-#include <string.h>
+#include "handlers/http_handler.h"
+#include "http/parser.h"
+#include "http/response.h"
+#include "http/status.h"
+#include "net/conn.h"
+#include "util/log.h"
 
-// Debug helper to print the parsed method
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+
+#define READ_BUFFER_SIZE 8192
+
+/* The read buffer must be larger than MAX_LINE_LENGTH (4096). The parser
+   rejects an endless line once more than MAX_LINE_LENGTH bytes pile up, so the
+   buffer can never fill completely without the parser reaching a verdict. */
+
+// helper functions
+// helper to print the parsed method
 static const char* method_to_str(http_method_t m) {
     switch(m) {
         case METHOD_GET: return "GET";
@@ -18,56 +30,102 @@ static const char* method_to_str(http_method_t m) {
     }
 }
 
-void http_test_handle(conn_t *client) {
-    char buffer[8192];
-    size_t total_len = 0;
-    
-    http_request_t req;
-    http_request_init(&req);
+// reads from client untill parser reaches DONE or ERROR
+static int read_request(conn_t *client, http_request_t *req){
+    char buffer[READ_BUFFER_SIZE];
+    size_t have = 0;
 
-    while (1) {
-        // Read into the available space at the end of our buffer
-        ssize_t bytes_read = conn_read(client, buffer + total_len, sizeof(buffer) - total_len);
-        
-        if (bytes_read <= 0) {
-            break; // Client disconnected or network error
-        }
-        
-        total_len += bytes_read;
-        
-        // Feed the accumulated bytes to the incremental parser
-        size_t consumed = http_parse(&req, buffer, total_len);
-        
-        // Shift unparsed bytes (e.g., incomplete headers or body) to the front of the buffer
-        if (consumed > 0 && consumed < total_len) {
-            memmove(buffer, buffer + consumed, total_len - consumed);
-            total_len -= consumed;
-        } else if (consumed == total_len) {
-            total_len = 0;
-        }
+    while(req->state != PARSE_DONE && req->state != PARSE_ERROR){
+         // client, pointer increment and size reduction
+        ssize_t n = conn_read(client, buffer + have, sizeof(buffer) - have);
 
-        // Check if the state machine reached a terminal state
-        if (req.state == PARSE_DONE) {
-             // log it
-            log_info("Parsed request: %s %s %s (Headers: %d, Body: %zu bytes)", 
-                     method_to_str(req.method), req.path, req.version, 
-                     req.header_count, req.content_length);
+        if(n <= 0) return -1; // nothing read
 
-            // Send a valid HTTP dummy response to satisfy the client
-            const char *dummy_resp = "HTTP/1.1 200 OK\r\nContent-Length: 13\r\nConnection: close\r\n\r\nParser Works!";
-            conn_write_all(client, dummy_resp, strlen(dummy_resp));
-            break;
-            
-        } else if (req.state == PARSE_ERROR) {
-            log_error("Parse rejected: Status Code %d", req.error_status);
-            
-            // Send a generic error response back
-            const char *err_resp = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            conn_write_all(client, err_resp, strlen(err_resp));
-            break;
-        }
+        have += (size_t)n;
+
+        size_t used = http_parse(req, buffer, have);
+        memmove(buffer, buffer + used, have - used);
+        have -= used;
     }
 
-    // Critical: Free the dynamically allocated body to prevent memory leaks
-    http_request_free(&req);
+    return (req->state == PARSE_DONE) ? 1 : 0;
 }
+
+// temporary only, will be replaced with router
+static void dispatch_stub(const http_request_t *req, http_response_t *res){
+    (void)req;
+    res->status = HTTP_STATUS_OK;
+    http_response_set_body(res, "Hello\n", 6, "text/plain; charset=utf-8");
+}
+
+// sends head then body, returns 0 on success -1 on failure
+static int send_response(conn_t *client, const http_response_t *res,
+     const http_request_t *req, int keep_alive){
+    size_t head_len = 0;
+
+    // get the string
+    char *head = http_response_serialize_head(res, keep_alive, &head_len);
+
+    if(!head) return -1;
+
+    // send headers
+    int rc = conn_write_all(client, head, head_len);
+    free(head);
+
+    if(rc < 0){
+        return -1;
+    }
+
+    //send body
+    if(req->method != METHOD_HEAD && res->body_len > 0){
+        rc = conn_write_all(client, res->body, res->body_len);
+    }
+
+    return rc;
+}
+
+void http_connection_handle(conn_t *client){
+    http_request_t *req = malloc(sizeof(*req)); // around 30 KB, so need to keep it off stack
+    http_response_t *res = malloc(sizeof(*res));
+
+    if(!req || !res){ // malloc fail condition
+        log_error("http: out of memory");
+        goto cleanup;
+    }
+
+    http_request_init(req);
+    http_response_init(res);
+
+    int result = read_request(client, req);
+    if(result < 0){
+        goto cleanup;
+    } 
+
+    if(result == 0){
+        http_response_set_error(res, req->error_status);
+    }
+    else{
+        dispatch_stub(req, res);
+    }
+
+    send_response(client, res, req, 0); // keep alive is 0 for now
+
+    log_info("%s %s%s%s -> %d",
+             method_to_str(req->method),
+             req->path,
+             req->query[0] ? "?" : "",
+             req->query,
+             (int)res->status);
+
+cleanup:
+    if(req){
+        http_request_free(req);
+        free(req);
+    }
+    if(res){
+        http_response_free(res);
+        free(res);  
+    }
+
+}
+
