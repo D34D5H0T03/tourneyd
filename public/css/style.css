@@ -1,0 +1,25 @@
+:root {
+    --bg-color: #0f0f13;
+    --text-color: #c9c9d1;
+    --accent-color: #00ffcc;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: 'Courier New', Courier, monospace;
+    margin: 0;
+    padding: 2rem;
+    line-height: 1.6;
+}
+
+h1 {
+    color: var(--accent-color);
+    border-bottom: 1px solid #333;
+    padding-bottom: 0.5rem;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+}

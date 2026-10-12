@@ -38,12 +38,14 @@ void static_files_handler(const http_request_t *req, http_response_t *res){
     char decoded[MAX_PATH_LENGTH];
     if (http_url_decode(req->path, decoded, sizeof(decoded)) < 0){
         http_response_set_error(res, HTTP_STATUS_BAD_REQUEST);
+        return;
     }
 
      // Hide dotfiles (.git, .env) and any ".." segment before touching the disk. 
      // further directory traversal squash defense
     if (strstr(decoded, "/.")) {
          http_response_set_error(res, HTTP_STATUS_NOT_FOUND);
+         return;
     }
 
     // directory index rule. automatically serves index.html if user requests a directory

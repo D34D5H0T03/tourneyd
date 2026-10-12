@@ -33,6 +33,8 @@ int http_url_decode(const char *in, char *out, size_t cap){
 
             out[j++] = c; // append the decoded char to out
             i += URL_ENCODING_LENGTH; // increment by 3 for next character
+        }else {
+            out[j++] = in[i++]; 
         }
     }
 
