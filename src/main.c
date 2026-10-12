@@ -3,10 +3,10 @@
 #include <signal.h>
 #include "net/listener.h"
 #include "concurrency/concurrency.h"
-#include "handlers/http_handler.h"
+#include "connections/http_connection.h"
 #include "util/log.h"
-#include "router/router.h"
-#include "handlers/hello.h"
+#include "http/router.h"
+#include "app/hello.h"
 
 // default server configurations
 #define DEFAULT_PORT "8080"

@@ -1,10 +1,10 @@
-#include "handlers/http_handler.h"
+#include "connections/http_connection.h"
 #include "http/parser.h"
 #include "http/response.h"
 #include "http/status.h"
 #include "net/conn.h"
 #include "util/log.h"
-#include "router/router.h"
+#include "http/router.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -92,7 +92,7 @@ void http_connection_handle(conn_t *client){
     send_response(client, res, req, 0); // keep alive is 0 for now
 
     log_info("%s %s%s%s -> %d",
-             method_to_str(req->method),
+             http_method_to_str(req->method),
              req->path,
              req->query[0] ? "?" : "",
              req->query,
