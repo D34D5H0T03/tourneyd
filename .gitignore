@@ -22,3 +22,5 @@ tourneyd
 # debugging
 core
 vgcore.*
+!src/core/
+!include/core/
