@@ -5,6 +5,9 @@
 #include "http/router.h"
 #include "app/routes.h"
 #include "util/log.h"
+#include "app/static_files.h"
+
+
 #include <signal.h>
 #include <unistd.h>
 
@@ -12,7 +15,13 @@ static int server_fd = -1;
 
 int server_init(const config_t *cfg) {
     signal(SIGPIPE, SIG_IGN);
-    
+
+    // Initialize the doc root directory path
+    if (static_files_init(cfg->doc_root) < 0) {
+        log_error("Fatal: failed to initialize static document root: %s", cfg->doc_root);
+        return -1;
+    }
+
     router_init();
     app_register_routes();
     // static_files_init(cfg->doc_root); <-- Added in Phase A4
