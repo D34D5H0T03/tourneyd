@@ -1,5 +1,5 @@
-#ifndef HTTP_HANDLER_H
-#define HTTP_HANDLER_H
+#ifndef HTTP_CONNECTION_H
+#define HTTP_CONNECTION_H
 
 #include "net/conn.h"
 
