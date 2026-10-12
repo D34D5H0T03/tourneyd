@@ -1,42 +1,23 @@
-#include <stdio.h>
-#include <unistd.h>
-#include <signal.h>
-#include "net/listener.h"
-#include "concurrency/concurrency.h"
-#include "connections/http_connection.h"
-#include "util/log.h"
-#include "http/router.h"
-#include "app/hello.h"
+#include "core/config.h"
+#include "core/server.h"
+#include <stdlib.h>
 
-// default server configurations
-#define DEFAULT_PORT "8080"
-#define DEFAULT_BACKLOG 128
-
-int main(void) {
-    // Ignore SIGPIPE. If we try to write to a client who suddenly disconnected, 
-    // the OS sends SIGPIPE. The default behavior is to kill the server. 
-    // Ignoring it makes write() return -1 instead, which we handle gracefully.
-    signal(SIGPIPE, SIG_IGN);
-
-    const char *port = DEFAULT_PORT;
-    int backlog = DEFAULT_BACKLOG; 
-
-    router_init();
-    router_add(METHOD_GET, "/", hello_handler);
-    router_add(METHOD_POST, "/upper", upper_handler);
-
-    log_info("Starting tourneyd on port %s...", port);
+int main(int argc, char **argv) {
+    config_t cfg;
     
-    int listen_fd = listener_create(port, backlog);
-    if (listen_fd < 0) {
-        log_error("Fatal: failed to initialize listener.");
-        return 1;
+    config_defaults(&cfg);
+    
+    if (config_parse_args(&cfg, argc, argv) < 0) {
+        return EXIT_FAILURE;
     }
-
-    log_info("Successfully listening on port %s", port);
-
-    // passing the file descriptor and the echo handler to the fucntion pointer
-    concurrency_run(listen_fd, http_connection_handle);
-    close(listen_fd);
-    return 0;
+    
+    if (server_init(&cfg) < 0) {
+        return EXIT_FAILURE;
+    }
+    
+    int rc = server_run();
+    
+    server_shutdown();
+    
+    return rc < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 }
