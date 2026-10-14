@@ -3,26 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>tourneyd | CTF Platform</title>
+    <title>tourneyd | Bare-Metal CTF Platform</title>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Welcome to tourneyd</h1>
-        <p>Your custom C web server is successfully serving static files.</p>
-        
-        <h2>System Status</h2>
-        <ul>
-            <li>Router Engine: <strong>Online</strong></li>
-            <li>Static File Handler: <strong>Online</strong></li>
-            <li>MIME Type Resolver: <strong>Online</strong></li>
-        </ul>
 
-        <h2>Navigation</h2>
-        <ul>
-            <li><a href="/writeups.html" style="color: #00ffcc;">CTF Writeups</a></li>
-            <li><a href="/about.html" style="color: #00ffcc;">About Platform</a></li>
-        </ul>
-    </div>
+    <!-- Asymmetrical Left Sidebar Navigation -->
+    <aside class="sidebar">
+        <div>
+            <a href="/" class="brand">tourneyd</a>
+        </div>
+        
+        <nav class="nav-links">
+            <a href="/event/ctf/challenges.html" class="nav-item">
+                <span>Capture The Flag</span>
+            </a>
+            <a href="/blog/ctf_writeups/writeups.html" class="nav-item">
+                <span>Vulnerability Writeups</span>
+            </a>
+            <a href="/info/about.html" class="nav-item">
+                <span>System About</span>
+            </a>
+        </nav>
+
+        <div class="sys-status">
+            [STATUS] HTTP/1.1 LISTENING<br>
+            [ROOT] ./public
+        </div>
+    </aside>
+
+    <!-- Main Reading Content -->
+    <main class="content">
+        <h1>Engineered from the <span class="highlight">socket</span> up.</h1>
+        
+        <p class="prose">
+            I'm <strong>Abdul Basit</strong>, a CSE undergrad based in Bangladesh focused on systems programming, vulnerability research, and exploit development. My long-term objective is advancing program analysis and fuzzing at the lowest levels of computation.
+        </p>
+
+        <p class="prose">
+            What began as an exploration of the TCP/IP stack inspired by the theoretical foundations in <em>Computer Networking: A Top-Down Approach</em> has evolved into <code>tourneyd</code>. It is a custom, bare-metal C web server built entirely without external frameworks. 
+        </p>
+        
+        <p class="prose">
+            This infrastructure serves as a high-performance staging ground to host Capture The Flag competitions, orchestrate algorithmic contests, and permanently archive offensive security writeups.
+        </p>
+
+        <div class="terminal-block">
+            > Architecture: Multi-process Forking Model<br>
+            > Request Dispatch: O(N) Read-Only Prefix Matching<br>
+            > Document Root: Secured via POSIX realpath()<br>
+            > Target: Non-blocking TLS + epoll
+        </div>
+
+        <a href="/info/author.html" class="subtle-btn">
+            <span>// Developer Profile & Research</span>
+            <span>→</span>
+        </a>
+    </main>
+
 </body>
 </html>
