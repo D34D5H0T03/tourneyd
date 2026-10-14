@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Architecture | tourneyd</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div>
+            <a href="/" class="brand">tourneyd</a>
+
+            <div class="sidebar-label">// Navigation</div>
+            <nav class="nav-links">
+                <a href="/" class="nav-item"><span>Index</span></a>
+                <a href="/event/ctf/challenges.html" class="nav-item"><span>Capture The Flag</span></a>
+                <a href="/blog/ctf_writeups/writeups.html" class="nav-item"><span>Vulnerability Writeups</span></a>
+            </nav>
+        </div>
+
+        <div class="sys-status">
+            [BINARY] build/tourneyd<br>
+            [STD] GNU C17 / POSIX
+        </div>
+    </aside>
+
+    <main class="content">
+        <h1>System <span class="highlight">architecture</span>.</h1>
+        <p class="prose">
+            <code>tourneyd</code> is a zero-framework, monolithic HTTP/1.1 web server written in C. Every layer—from TCP socket binding and incremental state-machine parsing to canonical path resolution—is engineered manually to maintain strict control over memory, file descriptors, and security boundaries.
+        </p>
+
+        <div class="terminal-block" style="margin-top: 0; margin-bottom: 3rem;">
+            > Dependency Flow: main &rarr; core &rarr; concurrency &rarr; connections &rarr; http &rarr; app &rarr; db<br>
+            > Isolation Rule: Protocol parsing (http/) is 100% decoupled from socket I/O (net/, connections/).
+        </div>
+
+        <!-- Section 1: Subsystem Breakdown -->
+        <h2 class="section-title">// 01_Core_Subsystems</h2>
+        <div class="card-grid">
+            <div class="card">
+                <div>
+                    <div class="card-meta">
+                        <span class="badge">[NET &amp; CONCURRENCY]</span>
+                        <span>src/net/</span>
+                    </div>
+                    <h3 class="card-title">Socket &amp; Process Layer</h3>
+                    <p class="card-desc">
+                        IPv4/IPv6 dual-stack listener via <code>getaddrinfo</code> with <code>SO_REUSEADDR</code>. Pluggable compile-time concurrency models (<code>fork_model</code> and <code>serial_model</code>) with non-blocking <code>SIGCHLD</code> zombie reaping (<code>WNOHANG</code>) and <code>EINTR</code>-resilient read/write loops.
+                    </p>
+                </div>
+                <div class="card-meta" style="margin-bottom: 0;">
+                    <span>MODEL: FORK_PER_CONN</span>
+                    <span>FD_SAFE: YES</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div>
+                    <div class="card-meta">
+                        <span class="badge">[HTTP ENGINE]</span>
+                        <span>src/http/</span>
+                    </div>
+                    <h3 class="card-title">State-Machine Parser</h3>
+                    <p class="card-desc">
+                        Pure, I/O-free incremental parser (<code>PARSE_REQ_LINE</code> &rarr; <code>PARSE_HEADERS</code> &rarr; <code>PARSE_BODY</code>). Enforces strict compile-time bounds (4KB lines, 1MB bodies, 50 headers) and pairs with a serializer that strips reserved framing overrides and blocks CRLF header injection.
+                    </p>
+                </div>
+                <div class="card-meta" style="margin-bottom: 0;">
+                    <span>PROTOCOL: HTTP/1.0 &amp; 1.1</span>
+                    <span>HEAP_ISOLATED: YES</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div>
+                    <div class="card-meta">
+                        <span class="badge">[DISPATCHER]</span>
+                        <span>src/http/router.c</span>
+                    </div>
+                    <h3 class="card-title">Read-Only Route Table</h3>
+                    <p class="card-desc">
+                        Populated once prior to <code>fork()</code> or thread creation. Supports exact matches and longest-prefix scoring, automatic <code>HEAD</code>-to-<code>GET</code> aliasing, fallback delegation, and bitmask-calculated <code>405 Method Not Allowed</code> responses with dynamic <code>Allow</code> headers.
+                    </p>
+                </div>
+                <div class="card-meta" style="margin-bottom: 0;">
+                    <span>MAX_ROUTES: 64</span>
+                    <span>LOCK_FREE: YES</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div>
+                    <div class="card-meta">
+                        <span class="badge">[STATIC DELIVERY]</span>
+                        <span>src/app/static_files.c</span>
+                    </div>
+                    <h3 class="card-title">Hardened File Server</h3>
+                    <p class="card-desc">
+                        Decodes percent-encoded paths upfront while rejecting <code>%00</code> null-byte injections. Defeats directory traversal and symlink escapes via kernel-resolved <code>realpath()</code> containment checks, <code>O_CLOEXEC</code> descriptors, and <code>fstat()</code> TOCTOU verification.
+                    </p>
+                </div>
+                <div class="card-meta" style="margin-bottom: 0;">
+                    <span>MAX_FILE: 8 MB</span>
+                    <span>NOSNIFF: ENFORCED</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 2: Security & Defensive Guarantees -->
+        <h2 class="section-title">// 02_Defensive_Engineering</h2>
+        <div class="archive-board">
+            <div class="archive-row">
+                <span class="badge">[01]</span>
+                <span><strong>Directory Traversal Quarantine</strong> &mdash; Rejects <code>/.</code> segments and verifies <code>realpath()</code> prefixes against the canonical <code>doc_root</code> before opening descriptors.</span>
+                <span style="color: var(--fg-muted);">static_files.c</span>
+            </div>
+            <div class="archive-row">
+                <span class="badge">[02]</span>
+                <span><strong>TOCTOU &amp; Device File Prevention</strong> &mdash; Inspects open file descriptors via <code>fstat()</code> and enforces <code>S_ISREG</code> to block directory or device reads.</span>
+                <span style="color: var(--fg-muted);">static_files.c</span>
+            </div>
+            <div class="archive-row">
+                <span class="badge">[03]</span>
+                <span><strong>Null-Byte &amp; CRLF Injection Defense</strong> &mdash; Blocks <code>%00</code> in URL decoding and rejects <code>\r</code>/<code>\n</code> in custom response headers.</span>
+                <span style="color: var(--fg-muted);">url.c / response.c</span>
+            </div>
+            <div class="archive-row">
+                <span class="badge">[04]</span>
+                <span><strong>Stack &amp; Heap Exhaustion Caps</strong> &mdash; Allocates 30KB request/response structs on the heap per connection and caps static payloads at 8MB.</span>
+                <span style="color: var(--fg-muted);">http_connection.c</span>
+            </div>
+        </div>
+
+        <!-- Section 3: Development Roadmap -->
+        <h2 class="section-title">// 03_Engineering_Roadmap</h2>
+        <div class="archive-board">
+            <div class="archive-row">
+                <span class="badge">v0.3</span>
+                <span><strong>Static File Engine &amp; Core Restructure</strong> &mdash; Modular layer separation, URL percent-decoding, MIME resolution, and static frontend.</span>
+                <span style="color: var(--accent);">[ACTIVE]</span>
+            </div>
+            <div class="archive-row">
+                <span class="badge">v0.5</span>
+                <span><strong>Server Hardening (Phase A5)</strong> &mdash; HTTP/1.1 Keep-Alive loop, socket timeouts, active child process limits, and graceful <code>SIGINT</code>/<code>SIGTERM</code> shutdown.</span>
+                <span style="color: var(--fg-muted);">[PLANNED]</span>
+            </div>
+            <div class="archive-row">
+                <span class="badge">v1.0</span>
+                <span><strong>Embedded SQLite &amp; CTF API</strong> &mdash; Zero-dependency vendored SQLite layer, challenge/flag verification endpoints, and scoreboard state.</span>
+                <span style="color: var(--fg-muted);">[PLANNED]</span>
+            </div>
+            <div class="archive-row">
+                <span class="badge">v1.2</span>
+                <span><strong>Event-Driven epoll + Worker Pool</strong> &mdash; Non-blocking state machine with an <code>eventfd</code>-backed thread pool to isolate blocking SQLite queries.</span>
+                <span style="color: var(--fg-muted);">[PLANNED]</span>
+            </div>
+            <div class="archive-row">
+                <span class="badge">v2.0</span>
+                <span><strong>Non-Blocking OpenSSL TLS</strong> &mdash; Full HTTPS encryption integrated directly into the <code>epoll</code> readiness state machine.</span>
+                <span style="color: var(--fg-muted);">[TARGET]</span>
+            </div>
+        </div>
+    </main>
+
+</body>
+</html>
