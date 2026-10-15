@@ -12,8 +12,11 @@
 #include <unistd.h>
 
 static int server_fd = -1;
+static const config_t *server_cfg = NULL;
 
 int server_init(const config_t *cfg) {
+    server_cfg = cfg;
+
     signal(SIGPIPE, SIG_IGN);
 
     // Initialize the doc root directory path
@@ -27,7 +30,7 @@ int server_init(const config_t *cfg) {
     // static_files_init(cfg->doc_root); <-- Added in Phase A4
 
     log_info("Starting tourneyd on port %s...", cfg->port);
-    server_fd = listener_create(cfg->port, cfg->backlog);
+    server_fd = listener_create(cfg->bind_addr, cfg->port, cfg->backlog);
     
     if (server_fd < 0) {
         log_error("Fatal: failed to initialize listener.");
@@ -39,8 +42,8 @@ int server_init(const config_t *cfg) {
 }
 
 int server_run(void) {
-    if (server_fd < 0) return -1;
-    return concurrency_run(server_fd, http_connection_handle);
+    if (server_fd < 0 || !server_cfg) return -1;
+    return concurrency_run(server_fd, server_cfg->max_children, http_connection_handle);
 }
 
 void server_shutdown(void) {

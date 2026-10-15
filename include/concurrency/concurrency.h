@@ -7,7 +7,7 @@
 typedef void (*conn_handler_fn)(conn_t *client);
 
 // Takes control of the accept loop and decides how to run the handler
-int concurrency_run(int listen_fd, conn_handler_fn handler);
+int concurrency_run(int listen_fd, int max_children, conn_handler_fn handler);
 
 // Gracefully stops the accept loop
 void concurrency_shutdown(void);

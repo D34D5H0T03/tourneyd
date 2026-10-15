@@ -4,6 +4,10 @@
 #include <sys/wait.h>
 #include <errno.h>
 
+#define LIFETIME_CAP 30
+
+static volatile sig_atomic_t active_children = 0;
+
 // reaps zombie child processes without blocking parent
 static void sigchld_handler(int sig){
     (void)sig;
@@ -12,7 +16,9 @@ static void sigchld_handler(int sig){
     int saved_errno = errno;
 
     // WNOHANG ensures no block untill child fully exits
-    while(waitpid(-1, NULL, WNOHANG) > 0);
+    while(waitpid(-1, NULL, WNOHANG) > 0){
+        active_children--;
+    }
 
     errno = saved_errno;
 }
@@ -30,20 +36,37 @@ static int install_sigchld(void){
     return sigaction(SIGCHLD, &sa, NULL);
 }
 
-int concurrency_run(int listen_fd, conn_handler_fn handler){
+int concurrency_run(int listen_fd,int max_children, conn_handler_fn handler){
     // handle signals with sigaction
     if(install_sigchld() < 0){
         return -1; //setup failed
     }
 
+    sigset_t mask, oldmask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGCHLD);
+
     while(1){
+
+        // process cap: safely block SIGCHLD, check cap and suspend if full
+        sigprocmask(SIG_BLOCK, &mask, &oldmask);
+        while(active_children >= max_children){
+            sigsuspend(&oldmask);
+        }
+        sigprocmask(SIG_SETMASK, &oldmask, NULL); // unblock
         // setup so connection is established with clients that completed the TCP handshake
         conn_t client;
         if(conn_accept(listen_fd, &client) < 0){
             continue;
         }
 
+        // safe fork(), block SIGCHLD so children don't exit before increment
+        sigprocmask(SIG_BLOCK, &mask, &oldmask);
         pid_t pid = fork();
+        if(pid > 0){
+            active_children++;
+        }
+        sigprocmask(SIG_SETMASK, &oldmask, NULL); // unblock
 
         if (pid < 0){
             // fork failed so drop client
@@ -53,6 +76,7 @@ int concurrency_run(int listen_fd, conn_handler_fn handler){
 
         if(pid == 0){
             // inside the child process
+            alarm(LIFETIME_CAP); // for slowloris
             close(listen_fd); //child process doesn't need listener it only handles client
             handler(&client); //handle client requests
             conn_close(&client); //close the connection and exit

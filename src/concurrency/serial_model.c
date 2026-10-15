@@ -1,6 +1,7 @@
 #include "concurrency/concurrency.h"
 
-int concurrency_run(int listen_fd, conn_handler_fn handler){
+int concurrency_run(int listen_fd, int max_children, conn_handler_fn handler){
+    (void)max_children; // only for fork model
     while(1){
         conn_t client;
 

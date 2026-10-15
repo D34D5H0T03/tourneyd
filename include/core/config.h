@@ -1,6 +1,8 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include <stdio.h>
+
 typedef struct {
     const char *bind_addr; // IP address to bind to
     const char *port; // Port to bind to

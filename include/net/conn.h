@@ -28,4 +28,7 @@ void conn_close(conn_t *connected_client);
 // gets client ip address and turns it into readable string 
 void conn_peer_str(const conn_t *connected_client, char *buffer, size_t n);
 
+// sets socket read/write timeouts
+int conn_set_deadline(conn_t *connected_client, int seconds);
+
 #endif

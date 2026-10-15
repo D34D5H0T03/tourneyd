@@ -11,6 +11,7 @@
 #include <sys/types.h>
 
 #define READ_BUFFER_SIZE 8192
+#define CONN_DEADLINE 15   
 
 /* The read buffer must be larger than MAX_LINE_LENGTH (4096). The parser
    rejects an endless line once more than MAX_LINE_LENGTH bytes pile up, so the
@@ -26,6 +27,12 @@ static int read_request(conn_t *client, http_request_t *req){
     while(req->state != PARSE_DONE && req->state != PARSE_ERROR){
          // client, pointer increment and size reduction
         ssize_t n = conn_read(client, buffer + have, sizeof(buffer) - have);
+
+        if(n == -2){ // case of timeout
+            req->error_status = HTTP_STATUS_REQUEST_TIMEOUT;
+            req->state = PARSE_ERROR;
+            break;
+        }
 
         if(n <= 0) return -1; // nothing read
 
@@ -66,6 +73,8 @@ static int send_response(conn_t *client, const http_response_t *res,
 }
 
 void http_connection_handle(conn_t *client){
+
+    conn_set_deadline(client, CONN_DEADLINE);
     http_request_t *req = malloc(sizeof(*req)); // around 30 KB, so need to keep it off stack
     http_response_t *res = malloc(sizeof(*res));
 

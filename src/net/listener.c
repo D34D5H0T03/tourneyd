@@ -7,7 +7,7 @@
 #include "net/listener.h"
 #include "util/log.h"
 
-int listener_create(const char *port, int backlog){
+int listener_create(const char *bind_addr, const char *port, int backlog){
     struct addrinfo hints; // Hints for addrinfo to specify waht connection I want
     struct addrinfo *res; // Pointer to the head of the returned linked list
     struct addrinfo *p; // pointer to iterate through res
@@ -23,7 +23,7 @@ int listener_create(const char *port, int backlog){
     hints.ai_flags = AI_PASSIVE; // tells that the result would be used for bind() rather that connect()
 
     // getting the linked list of available addresses for the port
-    int status = getaddrinfo(NULL, port, &hints, &res);
+    int status = getaddrinfo(bind_addr, port, &hints, &res);
     if(status != 0){
         log_error("getaddrinfo error: %s", gai_strerror(status));
         return listener_fd; // -1 failure
