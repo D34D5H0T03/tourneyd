@@ -36,7 +36,7 @@ int conn_set_deadline(conn_t *connected_client, int seconds){
     if(setsockopt(connected_client->fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0){
         return -1;
     }
-
+    return 0;
 }
 
 // reads up to n bytes form the TCP reliable pipe socket fd.
