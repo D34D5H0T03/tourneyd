@@ -36,7 +36,7 @@ static int install_sigchld(void){
     return sigaction(SIGCHLD, &sa, NULL);
 }
 
-int concurrency_run(int listen_fd,int max_children, conn_handler_fn handler){
+int concurrency_run(int listen_fd, int max_children, conn_handler_fn handler){
     // handle signals with sigaction
     if(install_sigchld() < 0){
         return -1; //setup failed

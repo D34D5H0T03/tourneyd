@@ -53,6 +53,7 @@ typedef struct {
     http_header_t headers[MAX_HEADERS];
     int header_count;
 
+    size_t header_bytes;
     size_t content_length;
     size_t body_received;
     char  *body;              // malloc, need freeing and handle dangling pointer

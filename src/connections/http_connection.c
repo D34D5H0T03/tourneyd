@@ -11,7 +11,7 @@
 #include <sys/types.h>
 
 #define READ_BUFFER_SIZE 8192
-#define CONN_DEADLINE 15   
+#define CONN_DEADLINE 15
 
 /* The read buffer must be larger than MAX_LINE_LENGTH (4096). The parser
    rejects an endless line once more than MAX_LINE_LENGTH bytes pile up, so the
@@ -48,7 +48,7 @@ static int read_request(conn_t *client, http_request_t *req){
 
 // sends head then body, returns 0 on success -1 on failure
 static int send_response(conn_t *client, const http_response_t *res,
-     const http_request_t *req, int keep_alive){
+        const http_request_t *req, int keep_alive){
     size_t head_len = 0;
 
     // get the string

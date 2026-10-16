@@ -8,6 +8,7 @@
 #define ASCII_MIN_PRINTABLE 0x20 // Space character (Start of printable ASCII)
 #define ASCII_DEL 0x7F           // Delete character (End of standard printable ASCII)
 #define CRLF_LEN 2
+#define MAX_HEADER_BYTES 16384
 
 
 // Helper Functions
@@ -183,19 +184,43 @@ static http_status_t parse_header_line(http_request_t *req, const char *line, si
 
     if(vlen >= MAX_HEADER_VALUE) return HTTP_STATUS_HEADER_TOO_LARGE;
 
-    http_header_t *h = &req->headers[req->header_count++];
+    // load into struct without incrementing count before checks
+    http_header_t *h = &req->headers[req->header_count];
     memcpy(h->name, line, nlen);
     h->name[nlen] = '\0';
 
     memcpy(h->value, v, vlen);
     h->value[vlen] = '\0';
 
-    return HTTP_STATUS_OK;
+    // control characters and bare CR defence
+    for(size_t i = 0; i < vlen; i++){
+        unsigned char c = (unsigned char)h->value[i];
+        if(c < ASCII_MIN_PRINTABLE && c != '\t'){
+            return HTTP_STATUS_BAD_REQUEST;
+        }
+    }
 
+    //http request smuggling defence
+    if(!strcasecmp(h->name, "Content-Length")){
+        // if it exists and value doesn't match exactly, smuggling.
+        const char *existing = http_request_header(req, "Content-Length");
+        if(existing && strcmp(existing, h->value) != 0){
+            return HTTP_STATUS_BAD_REQUEST;
+        }
+    }
+
+    req->header_count++;
+    return HTTP_STATUS_OK;
 }
 
 // Called when the blank line ending the headers is seen. it decides if parse body or done
 static http_status_t finish_headers(http_request_t *req){
+
+    // HTTP/1.1 requires host headers
+    if(strcmp(req->version, "HTTP/1.1") == 0 && !http_request_header(req, "Host")){
+        return HTTP_STATUS_BAD_REQUEST;
+    }
+
     if(http_request_header(req, "Transfer-Encoding")){
         return HTTP_STATUS_NOT_IMPLEMENTED; // chunked bodies not supported
     }
@@ -300,6 +325,17 @@ size_t http_parse(http_request_t *req, const char* buffer, size_t buffer_len){
         
         // full line found
         size_t line_len = (size_t)(crlf - cur);
+
+        // header bload defence, accumulate bytes and kill if > 16KB
+        if(req->state == PARSE_REQ_LINE || req->state == PARSE_HEADERS){
+            req->header_bytes += line_len + CRLF_LEN;
+            if(req->header_bytes > MAX_HEADER_BYTES){
+                req->error_status = HTTP_STATUS_HEADER_TOO_LARGE;
+                req->state = PARSE_ERROR;
+                break;
+            }
+        }
+
         if(line_len > MAX_LINE_LENGTH){
             req->error_status = HTTP_STATUS_HEADER_TOO_LARGE;
             req->state = PARSE_ERROR;
