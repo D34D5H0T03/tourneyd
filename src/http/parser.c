@@ -245,7 +245,7 @@ static http_status_t finish_headers(http_request_t *req){
         }
         body_size = body_size * 10 + (size_t)(*p - '0');
 
-        if(body_size > MAX_BODY_SIZE){
+        if(body_size > req->limits.max_body_size){
             return HTTP_STATUS_PAYLOAD_TOO_LARGE;
         }
     }
@@ -264,11 +264,19 @@ static http_status_t finish_headers(http_request_t *req){
     return HTTP_STATUS_OK;
 }
 
-void http_request_init(http_request_t *req){
+void http_request_init(http_request_t *req, const http_limits_t *limits){
     memset(req, 0, sizeof(*req)); // zero out everything
     req->state = PARSE_REQ_LINE; // start of parsing
     req->method = METHOD_UNKNOWN;
     req->query[0] = '\0';
+
+    if(limits){
+        req->limits = *limits;
+    }
+    else{ // if limits not set, fallback to defaults
+        req->limits.max_body_size = MAX_BODY_SIZE;
+        req->limits.max_header_bytes = MAX_HEADER_BYTES;
+    }
 }
 
 void http_request_free(http_request_t *req){
@@ -329,7 +337,7 @@ size_t http_parse(http_request_t *req, const char* buffer, size_t buffer_len){
         // header bload defence, accumulate bytes and kill if > 16KB
         if(req->state == PARSE_REQ_LINE || req->state == PARSE_HEADERS){
             req->header_bytes += line_len + CRLF_LEN;
-            if(req->header_bytes > MAX_HEADER_BYTES){
+            if(req->header_bytes > req->limits.max_header_bytes){
                 req->error_status = HTTP_STATUS_HEADER_TOO_LARGE;
                 req->state = PARSE_ERROR;
                 break;

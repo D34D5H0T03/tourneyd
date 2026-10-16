@@ -36,7 +36,10 @@ typedef enum {
     METHOD_OPTIONS,
 } http_method_t;
 
-
+typedef struct{
+    size_t max_body_size;
+    size_t max_header_bytes;
+} http_limits_t;
 
 typedef struct {
     char name[MAX_HEADER_NAME];
@@ -60,10 +63,11 @@ typedef struct {
 
     parser_state_t state;
     http_status_t error_status;         // 400, 413, 414, 431, 501, 505 when state == PARSE_ERROR
+    http_limits_t limits;
 } http_request_t;
 
 // initializes the http object
-void http_request_init(http_request_t *req);
+void http_request_init(http_request_t *req, const http_limits_t *limits);
 
 // frees the memory of the http object (because the body uses malloc)
 void http_request_free(http_request_t *req);
