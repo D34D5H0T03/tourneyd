@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <string.h>
 #include <netdb.h>
+#include <sys/time.h> // for timeouts
 
 #include "net/conn.h"
 
@@ -24,6 +25,20 @@ int conn_accept(int listen_fd, conn_t *out){
     }
 }
 
+int conn_set_deadline(conn_t *connected_client, int seconds){
+    struct timeval tv;
+    tv.tv_sec = seconds;
+    tv.tv_usec = 0;
+    
+    if(setsockopt(connected_client->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0){
+        return -1;
+    }
+    if(setsockopt(connected_client->fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0){
+        return -1;
+    }
+    return 0;
+}
+
 // reads up to n bytes form the TCP reliable pipe socket fd.
 ssize_t conn_read(conn_t *connected_client, void *buffer, size_t n){
     while(1){
@@ -36,6 +51,10 @@ ssize_t conn_read(conn_t *connected_client, void *buffer, size_t n){
 
         if(errno == EINTR){
             continue; //signal inturrption handling
+        }
+
+        if(errno == EAGAIN || errno == EWOULDBLOCK){
+            return -2; // disctinct code for timeout
         }
 
         return -1; // Network error
