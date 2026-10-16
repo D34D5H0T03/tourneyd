@@ -36,7 +36,7 @@ static int install_sigchld(void){
     return sigaction(SIGCHLD, &sa, NULL);
 }
 
-int concurrency_run(int listen_fd, int max_children, conn_handler_fn handler){
+int concurrency_run(int listen_fd, conn_handler_fn handler, void *ctx, const concurrency_opts_t *opts){
     // handle signals with sigaction
     if(install_sigchld() < 0){
         return -1; //setup failed
@@ -50,7 +50,7 @@ int concurrency_run(int listen_fd, int max_children, conn_handler_fn handler){
 
         // process cap: safely block SIGCHLD, check cap and suspend if full
         sigprocmask(SIG_BLOCK, &mask, &oldmask);
-        while(active_children >= max_children){
+        while(active_children >= opts->max_workers){
             sigsuspend(&oldmask);
         }
         sigprocmask(SIG_SETMASK, &oldmask, NULL); // unblock
@@ -78,7 +78,7 @@ int concurrency_run(int listen_fd, int max_children, conn_handler_fn handler){
             // inside the child process
             alarm(LIFETIME_CAP); // for slowloris
             close(listen_fd); //child process doesn't need listener it only handles client
-            handler(&client); //handle client requests
+            handler(&client, ctx); //handle client requests
             conn_close(&client); //close the connection and exit
             _exit(0);
         }

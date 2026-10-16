@@ -35,7 +35,7 @@ static void feed_parser(http_request_t *req, const char *data, size_t chunk_size
 
 static void test_query_split() {
     http_request_t req;
-    http_request_init(&req);
+    http_request_init(&req, NULL);
     
     const char *raw = "GET /api/users?role=admin&active=true HTTP/1.1\r\nHost: localhost\r\n\r\n";
     feed_parser(&req, raw, strlen(raw));
@@ -51,7 +51,7 @@ static void test_query_split() {
 
 static void test_no_query() {
     http_request_t req;
-    http_request_init(&req);
+    http_request_init(&req, NULL);
     
     const char *raw = "POST /login HTTP/1.0\r\nContent-Length: 0\r\n\r\n";
     feed_parser(&req, raw, strlen(raw));
@@ -65,7 +65,7 @@ static void test_no_query() {
 
 static void test_incremental_delivery() {
     http_request_t req;
-    http_request_init(&req);
+    http_request_init(&req, NULL);
     
     // Simulate severe network latency by feeding the parser 1 single byte at a time
     const char *raw = "GET /incremental?test=1 HTTP/1.1\r\nHost: x\r\n\r\n";
@@ -82,14 +82,14 @@ static void test_malformed_requests() {
     http_request_t req;
     
     // Test 1: Unsupported Version
-    http_request_init(&req);
+    http_request_init(&req, NULL);
     const char *bad_version = "GET / HTTP/2.0\r\n\r\n";
     feed_parser(&req, bad_version, strlen(bad_version));
     assert(req.state == PARSE_ERROR);
     assert(req.error_status == HTTP_STATUS_VERSION_NOT_SUPPORTED);
     
     // Test 2: Missing Path Slash
-    http_request_init(&req);
+    http_request_init(&req, NULL);
     const char *bad_path = "GET index.html HTTP/1.1\r\n\r\n";
     feed_parser(&req, bad_path, strlen(bad_path));
     assert(req.state == PARSE_ERROR);

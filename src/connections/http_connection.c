@@ -11,7 +11,11 @@
 #include <sys/types.h>
 
 #define READ_BUFFER_SIZE 8192
-#define CONN_DEADLINE 15
+
+typedef struct {
+    char buffer[READ_BUFFER_SIZE];
+    size_t have;
+} http_conn_state_t;
 
 /* The read buffer must be larger than MAX_LINE_LENGTH (4096). The parser
    rejects an endless line once more than MAX_LINE_LENGTH bytes pile up, so the
@@ -20,13 +24,10 @@
 // helper functions
 
 // reads from client untill parser reaches DONE or ERROR
-static int read_request(conn_t *client, http_request_t *req){
-    char buffer[READ_BUFFER_SIZE];
-    size_t have = 0;
-
+static int read_request(conn_t *client, http_request_t *req, http_conn_state_t *state){
     while(req->state != PARSE_DONE && req->state != PARSE_ERROR){
          // client, pointer increment and size reduction
-        ssize_t n = conn_read(client, buffer + have, sizeof(buffer) - have);
+        ssize_t n = conn_read(client, state->buffer + state->have, sizeof(state->buffer) - state->have);
 
         if(n == -2){ // case of timeout
             req->error_status = HTTP_STATUS_REQUEST_TIMEOUT;
@@ -36,13 +37,12 @@ static int read_request(conn_t *client, http_request_t *req){
 
         if(n <= 0) return -1; // nothing read
 
-        have += (size_t)n;
+        state->have += (size_t)n;
 
-        size_t used = http_parse(req, buffer, have);
-        memmove(buffer, buffer + used, have - used);
-        have -= used;
+        size_t used = http_parse(req, state->buffer, state->have);
+        memmove(state->buffer, state->buffer + used, state->have - used);
+        state->have -= used;
     }
-
     return (req->state == PARSE_DONE) ? 1 : 0;
 }
 
@@ -72,21 +72,25 @@ static int send_response(conn_t *client, const http_response_t *res,
     return rc;
 }
 
-void http_connection_handle(conn_t *client){
+void http_connection_handle(conn_t *client, void *ctx){
+    const http_conn_opts_t *opts = (const http_conn_opts_t *)ctx;
 
-    conn_set_deadline(client, CONN_DEADLINE);
+    conn_set_deadline(client, opts->request_timeout_sec);
+    http_conn_state_t state = {0};
+
     http_request_t *req = malloc(sizeof(*req)); // around 30 KB, so need to keep it off stack
+    if (req) http_request_init(req, &opts->limits);
+
     http_response_t *res = malloc(sizeof(*res));
+    if (res) http_response_init(res);
 
     if(!req || !res){ // malloc fail condition
         log_error("http: out of memory");
         goto cleanup;
     }
 
-    http_request_init(req);
-    http_response_init(res);
-
-    int result = read_request(client, req);
+    int result = read_request(client, req, &state);
+    
     if(result < 0){
         goto cleanup;
     } 

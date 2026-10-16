@@ -26,7 +26,7 @@ static void handler_fallback(const http_request_t *req, http_response_t *res) {
 // Simulates the orchestrator passing a request to the router
 static void dispatch(http_method_t method, const char *path, http_response_t *res) {
     http_request_t req;
-    http_request_init(&req);
+    http_request_init(&req, NULL);
     req.method = method;
     snprintf(req.path, sizeof(req.path), "%s", path);
     
