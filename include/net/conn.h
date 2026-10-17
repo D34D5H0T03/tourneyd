@@ -11,6 +11,7 @@ typedef struct {
     int fd; //file descriptor of a socket. TCP reliable pipe for data.
     struct sockaddr_storage peer; // for IPv4 and IPv6 handling. Is 128 bytes IPv4 = 16 bytes and IPv6 = 28 bytes. so buffer overflow protection.
     socklen_t peer_len; //size of address for read and write syscalls
+    long long deadline_ms; //connection deadline for keep-alive
 } conn_t; 
 
 // blocks out untill client connects and puts data in the out field. returns 0 on success and -1 on failure
@@ -23,6 +24,9 @@ ssize_t conn_read(conn_t *connected_client, void *buffer, size_t n);
 // writes exactly n bytes, inturruptions are handled within
 int conn_write_all(conn_t *connected_client, const void *buffer, size_t n);
 
+// next write with keep-alive
+int conn_write_more(conn_t *connected_client, const void *buffer, size_t n);
+
 // safely closes connection
 void conn_close(conn_t *connected_client);
 
@@ -31,6 +35,6 @@ void conn_close(conn_t *connected_client);
 void conn_peer_str(const conn_t *connected_client, char *buffer, size_t n);
 
 // sets socket read/write timeouts
-int conn_set_deadline(conn_t *connected_client, int seconds);
+void conn_set_deadline(conn_t *connected_client, int seconds);
 
 #endif
