@@ -5,6 +5,13 @@
 #include <time.h>
 #include <unistd.h>
 
+#define ANSI_RESET   "\x1b[0m"
+#define ANSI_BOLD    "\x1b[1m"
+#define ANSI_RED     "\x1b[31m"
+#define ANSI_GREEN   "\x1b[32m"
+#define ANSI_CYAN    "\x1b[36m"
+#define ANSI_MAGENTA "\x1b[35m"
+
 /* One log line is one write(). Writes up to PIPE_BUF (4096) bytes are atomic on pipes, and
    children share the file offset, so lines from different processes never interleave. */
 #define LOG_LINE_MAX 2048
@@ -66,15 +73,26 @@ static void log_write(int fd, const char *tag, const char *fmt, va_list ap) {
 
 void log_debug(const char *fmt, ...) {
     if (min_level > LOG_DEBUG) return;
-    va_list ap; va_start(ap, fmt); log_write(STDERR_FILENO, "[DEBUG]", fmt, ap); va_end(ap);
+    va_list ap; va_start(ap, fmt); 
+    log_write(STDERR_FILENO, ANSI_CYAN "[DEBUG]" ANSI_RESET, fmt, ap); 
+    va_end(ap);
 }
+
 void log_info(const char *fmt, ...) {
     if (min_level > LOG_INFO) return;
-    va_list ap; va_start(ap, fmt); log_write(STDERR_FILENO, "[INFO]", fmt, ap); va_end(ap);
+    va_list ap; va_start(ap, fmt); 
+    log_write(STDERR_FILENO, ANSI_GREEN ANSI_BOLD "[INFO]" ANSI_RESET, fmt, ap); 
+    va_end(ap);
 }
+
 void log_error(const char *fmt, ...) {
-    va_list ap; va_start(ap, fmt); log_write(STDERR_FILENO, "[ERROR]", fmt, ap); va_end(ap);
+    va_list ap; va_start(ap, fmt); 
+    log_write(STDERR_FILENO, ANSI_RED ANSI_BOLD "[ERROR]" ANSI_RESET, fmt, ap); 
+    va_end(ap);
 }
+
 void log_access(const char *fmt, ...) {
-    va_list ap; va_start(ap, fmt); log_write(STDOUT_FILENO, "[ACCESS]", fmt, ap); va_end(ap);
+    va_list ap; va_start(ap, fmt); 
+    log_write(STDOUT_FILENO, ANSI_MAGENTA ANSI_BOLD "[ACCESS]" ANSI_RESET, fmt, ap); 
+    va_end(ap);
 }
