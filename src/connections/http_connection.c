@@ -310,7 +310,7 @@ void http_connection_handle(conn_t *client, const void *ctx)
         else
             router_dispatch(req, res);
 
-        // http_response_add_security_headers(res); // TODO
+        http_response_add_security_headers(res); // adds the default security headers
 
         int keep = result == 1 && want_keep_alive(req) && res->status < 500 && served + 1 < opts->max_requests_per_conn && !shutdown_requested();
 

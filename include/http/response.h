@@ -34,4 +34,7 @@ void http_response_set_error(http_response_t *res, http_status_t code);
 // Serializes the status line, required headers, and custom headers into a malloc'd buffer
 char *http_response_serialize_head(const http_response_t *res, int keep_alive, size_t *out_len);
 
+// Centralized security header injection
+void http_response_add_security_headers(http_response_t *res);
+
 #endif // RESPONSE_H

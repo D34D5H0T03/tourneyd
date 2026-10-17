@@ -12,6 +12,7 @@
 #include <unistd.h>
 
 #define STATIC_MAX_FILE (8u * 1024 * 1024)
+#define ETAG_BUFF_SIZE 48
 
 static char root[PATH_MAX];
 static size_t root_len;
@@ -87,6 +88,24 @@ void static_files_handler(const http_request_t *req, http_response_t *res){
         return;
     }
 
+    // etag for conditional requests(caching)
+    char etag[ETAG_BUFF_SIZE];
+    snprintf(etag, sizeof(etag), "\"%llx-%llx\"",
+             (unsigned long long)st.st_mtime, (unsigned long long)st.st_size);
+
+    const char *inm = http_request_header(req, "If-None-Match");
+    if (inm) {
+        if (strncmp(inm, "W/", 2) == 0) inm += 2;           /* proxies may weaken the validator */
+        
+        if (strcmp(inm, etag) == 0 || strcmp(inm, "*") == 0) {
+            close(fd);
+            res->status = HTTP_STATUS_NOT_MODIFIED;
+            http_response_add_header(res, "ETag", etag);
+            http_response_add_header(res, "Cache-Control", "no-cache");
+            return;
+        }
+    }
+
     size_t size = (size_t)st.st_size, got = 0;
     char *buf = malloc(size ? size : 1); // if size is 0, malloc(1)
     if (!buf) { // out of memory
@@ -115,9 +134,10 @@ void static_files_handler(const http_request_t *req, http_response_t *res){
     // handoff to response builder
     if(http_response_set_body(res, buf, got, http_mime_from_path(real)) < 0){
         http_response_set_error(res, HTTP_STATUS_INTERNAL_SERVER_ERROR);
-    }
-    else{
-        http_response_add_header(res, "X-Content-Type-Options", "nosniff");
+    } else {
+        // Only attach Cache headers if the body was successfully set (200 OK)
+        http_response_add_header(res, "ETag", etag);
+        http_response_add_header(res, "Cache-Control", "no-cache");
     }
     free(buf);
 }
