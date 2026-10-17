@@ -6,6 +6,7 @@
 
 #include "net/conn.h"
 
+
 int conn_accept(int listen_fd, conn_t *out){
     out->peer_len = sizeof(out->peer); // setting capacity limit to 128 bytes
 
@@ -54,7 +55,7 @@ ssize_t conn_read(conn_t *connected_client, void *buffer, size_t n){
         }
 
         if(errno == EAGAIN || errno == EWOULDBLOCK){
-            return -2; // disctinct code for timeout
+            return CONN_TIMEOUT; // disctinct code for timeout
         }
 
         return -1; // Network error

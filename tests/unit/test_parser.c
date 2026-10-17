@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
 
 // Helper to mock feeding the parser
 static void feed_parser(http_request_t *req, const char *data, size_t chunk_size) {
@@ -98,12 +99,77 @@ static void test_malformed_requests() {
     printf("[OK] test_malformed_requests\n");
 }
 
+static void test_hardening() {
+    http_request_t req;
+
+    // 1. NUL in header name (Smuggling)
+    http_request_init(&req, NULL);
+    const char nul_name[] = "GET / HTTP/1.1\r\nHost: a\r\nContent-Length\0x: 5\r\n\r\n";
+
+    // Bypass feed_parser to avoid strlen() truncating the input at the \0 byte
+    http_parse(&req, nul_name, sizeof(nul_name) - 1); 
+
+    assert(req.state == PARSE_ERROR);
+    assert(req.error_status == HTTP_STATUS_BAD_REQUEST);
+
+    // 2. DEL in value
+    http_request_init(&req, NULL);
+    const char *del_val = "GET / HTTP/1.1\r\nHost: a\r\nHeader: val\x7f\r\n\r\n";
+    feed_parser(&req, del_val, strlen(del_val));
+    assert(req.state == PARSE_ERROR);
+    assert(req.error_status == HTTP_STATUS_BAD_REQUEST);
+
+    // 3. Duplicate Host
+    http_request_init(&req, NULL);
+    const char *dup_host = "GET / HTTP/1.1\r\nHost: a\r\nHost: b\r\n\r\n";
+    feed_parser(&req, dup_host, strlen(dup_host));
+    assert(req.state == PARSE_ERROR);
+    assert(req.error_status == HTTP_STATUS_BAD_REQUEST);
+
+    // 4. Two Content-Length, 5 and 7
+    http_request_init(&req, NULL);
+    const char *dup_cl = "POST / HTTP/1.1\r\nHost: a\r\nContent-Length: 5\r\nContent-Length: 7\r\n\r\n";
+    feed_parser(&req, dup_cl, strlen(dup_cl));
+    assert(req.state == PARSE_ERROR);
+    assert(req.error_status == HTTP_STATUS_BAD_REQUEST);
+
+    // 5. Two Content-Length, both 5 (Accepted)
+    http_request_init(&req, NULL);
+    const char *dup_cl_same = "POST / HTTP/1.1\r\nHost: a\r\nContent-Length: 5\r\nContent-Length: 5\r\n\r\n";
+    feed_parser(&req, dup_cl_same, strlen(dup_cl_same));
+    assert(req.state == PARSE_BODY); 
+
+    // 6. HTTP/1.1 without Host
+    http_request_init(&req, NULL);
+    const char *no_host_11 = "GET / HTTP/1.1\r\n\r\n";
+    feed_parser(&req, no_host_11, strlen(no_host_11));
+    assert(req.state == PARSE_ERROR);
+    assert(req.error_status == HTTP_STATUS_BAD_REQUEST);
+
+    // 7. HTTP/1.0 without Host (Accepted)
+    http_request_init(&req, NULL);
+    const char *no_host_10 = "GET / HTTP/1.0\r\n\r\n";
+    feed_parser(&req, no_host_10, strlen(no_host_10));
+    assert(req.state == PARSE_DONE);
+
+    // 8. Size Clamping
+    http_limits_t bad_limits = { .max_body_size = SIZE_MAX, .max_header_bytes = SIZE_MAX };
+    http_request_init(&req, &bad_limits);
+    const char *big_body = "POST / HTTP/1.1\r\nHost: a\r\nContent-Length: 2097152\r\n\r\n"; // 2MB
+    feed_parser(&req, big_body, strlen(big_body));
+    assert(req.state == PARSE_ERROR);
+    assert(req.error_status == HTTP_STATUS_PAYLOAD_TOO_LARGE);
+
+    printf("[OK] test_hardening\n");
+}
+
 int main() {
     printf("Running Parser Unit Tests...\n");
     test_query_split();
     test_no_query();
     test_incremental_delivery();
     test_malformed_requests();
+    test_hardening();
     printf("All parser tests passed successfully.\n");
     return 0;
 }

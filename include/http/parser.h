@@ -14,6 +14,7 @@
 #define MAX_VERSION_LENGTH 16
 #define MAX_LINE_LENGTH    4096
 #define MAX_BODY_SIZE      (1024 * 1024)
+#define MAX_HEADER_BYTES   16384
 
 // the parser states for the state machine
 typedef enum{
@@ -81,4 +82,4 @@ const char *http_request_header(const http_request_t *req, const char *name);
 // converts method to str
 const char *http_method_to_str(http_method_t m);
 
-#endif // PARSER_H
+#endif // PARSER_H_INCLUDED

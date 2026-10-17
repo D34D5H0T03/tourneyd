@@ -8,7 +8,7 @@
 #define ASCII_MIN_PRINTABLE 0x20 // Space character (Start of printable ASCII)
 #define ASCII_DEL 0x7F           // Delete character (End of standard printable ASCII)
 #define CRLF_LEN 2
-#define MAX_HEADER_BYTES 16384
+
 
 
 // Helper Functions
@@ -22,6 +22,14 @@ static const char *find_crlf(const char *buf, size_t len){
         }
     }
     return NULL;
+}
+
+// function to check if charachter is valid token character as per RFC 7230
+static int is_token_char(unsigned char c) {
+    if (c >= 'a' && c <= 'z') return 1;
+    if (c >= 'A' && c <= 'Z') return 1;
+    if (c >= '0' && c <= '9') return 1;
+    return c != 0 && strchr("!#$%&'*+-.^_`|~", c) != NULL;
 }
 
 // helper to print the parsed method
@@ -96,8 +104,9 @@ static http_status_t parse_request_line(http_request_t *req, const char *line, s
         return HTTP_STATUS_BAD_REQUEST; 
     }
 
+    // Reject control characters in the base path
     for (size_t i = 0; i < plen; i++) {
-        if ((unsigned char)path[i] < 0x20 || path[i] == 0x7f){
+        if ((unsigned char)path[i] < ASCII_MIN_PRINTABLE || path[i] == ASCII_DEL){
             return HTTP_STATUS_BAD_REQUEST;
         }
     }
@@ -111,14 +120,6 @@ static http_status_t parse_request_line(http_request_t *req, const char *line, s
         // Enforces memory boundaries independently
         if (path_len >= MAX_PATH_LENGTH || query_len >= MAX_QUERY_LENGTH) {
             return HTTP_STATUS_URI_TOO_LONG;
-        }
-
-        // Reject control characters in the base path
-        for(size_t i = 0; i < path_len; i++){ 
-            if((unsigned char)path[i] < ASCII_MIN_PRINTABLE ||
-             path[i] == ASCII_DEL){
-                return HTTP_STATUS_BAD_REQUEST;
-             }
         }
 
         memcpy(req->path, path, path_len); 
@@ -164,9 +165,9 @@ static http_status_t parse_header_line(http_request_t *req, const char *line, si
         return HTTP_STATUS_HEADER_TOO_LARGE;
     }  
 
-    // no whitespace allowed in name (e.g content-length:)
+    // checking if every character is valid as per RFC
     for(size_t i = 0; i < nlen; i++){
-        if(line[i] == ' ' || line[i] == '\t'){
+        if(!is_token_char((unsigned char)line[i])){
             return HTTP_STATUS_BAD_REQUEST;
         }
     }
@@ -195,7 +196,7 @@ static http_status_t parse_header_line(http_request_t *req, const char *line, si
     // control characters and bare CR defence
     for(size_t i = 0; i < vlen; i++){
         unsigned char c = (unsigned char)h->value[i];
-        if(c < ASCII_MIN_PRINTABLE && c != '\t'){
+        if((c < ASCII_MIN_PRINTABLE && c != '\t') || c == ASCII_DEL){
             return HTTP_STATUS_BAD_REQUEST;
         }
     }
@@ -205,6 +206,13 @@ static http_status_t parse_header_line(http_request_t *req, const char *line, si
         // if it exists and value doesn't match exactly, smuggling.
         const char *existing = http_request_header(req, "Content-Length");
         if(existing && strcmp(existing, h->value) != 0){
+            return HTTP_STATUS_BAD_REQUEST;
+        }
+    }
+
+    // duplicate host defence
+    if(!strcasecmp(h->name, "Host")){
+        if(http_request_header(req, "Host")){
             return HTTP_STATUS_BAD_REQUEST;
         }
     }
@@ -269,11 +277,14 @@ void http_request_init(http_request_t *req, const http_limits_t *limits){
     req->state = PARSE_REQ_LINE; // start of parsing
     req->method = METHOD_UNKNOWN;
     req->query[0] = '\0';
-
-    if(limits){
-        req->limits = *limits;
-    }
-    else{ // if limits not set, fallback to defaults
+    
+    // check and replace if no limits
+    if (limits) {
+        req->limits.max_body_size = (limits->max_body_size > MAX_BODY_SIZE) ? 
+                                     MAX_BODY_SIZE : limits->max_body_size;
+        req->limits.max_header_bytes = (limits->max_header_bytes > MAX_HEADER_BYTES) ? 
+                                        MAX_HEADER_BYTES : limits->max_header_bytes;
+    } else {
         req->limits.max_body_size = MAX_BODY_SIZE;
         req->limits.max_header_bytes = MAX_HEADER_BYTES;
     }
@@ -334,7 +345,7 @@ size_t http_parse(http_request_t *req, const char* buffer, size_t buffer_len){
         // full line found
         size_t line_len = (size_t)(crlf - cur);
 
-        // header bload defence, accumulate bytes and kill if > 16KB
+        // header bloat defence, accumulate bytes and kill if > 16KB
         if(req->state == PARSE_REQ_LINE || req->state == PARSE_HEADERS){
             req->header_bytes += line_len + CRLF_LEN;
             if(req->header_bytes > req->limits.max_header_bytes){
