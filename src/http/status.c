@@ -3,6 +3,8 @@
 const char* http_status_reason(http_status_t status) {
     switch (status) {
         case HTTP_STATUS_OK: return "OK";
+        case HTTP_STATUS_NO_CONTENT: return "No Content";
+        case HTTP_STATUS_NOT_MODIFIED: return "Not Modified";
         case HTTP_STATUS_BAD_REQUEST: return "Bad Request";
         case HTTP_STATUS_NOT_FOUND: return "Not Found";
         case HTTP_STATUS_METHOD_NOT_ALLOWED: return "Method Not Allowed";

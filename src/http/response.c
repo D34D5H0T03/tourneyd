@@ -226,15 +226,21 @@ char *http_response_serialize_head(const http_response_t *res, int keep_alive, s
     // RfC 1123 time convention
     strftime(date, sizeof(date), "%a, %d %b %Y %H:%M:%S GMT", &tm);
 
-    // appending the request
+// Appending the status line and universal headers
     int ok =
         append(buffer, cap, &len, "HTTP/1.1 %d %s\r\n", (int)res->status,
                http_status_reason(res->status)) &&
         append(buffer, cap, &len, "Date: %s\r\n", date) &&
-        append(buffer, cap, &len, "Server: " SERVER_NAME "\r\n") &&
-        append(buffer, cap, &len, "Content-Length: %zu\r\n", res->body_len) &&
-        append(buffer, cap, &len, "Connection: %s\r\n",
-               keep_alive ? "keep-alive" : "close");
+        append(buffer, cap, &len, "Server: " SERVER_NAME "\r\n");
+
+    // Conditionally append Content-Length (304 and 204 MUST NOT have a Content-Length)
+    if (ok && res->status != HTTP_STATUS_NOT_MODIFIED && res->status != HTTP_STATUS_NO_CONTENT) {
+        ok = append(buffer, cap, &len, "Content-Length: %zu\r\n", res->body_len);
+    }
+
+    // Append connection state
+    ok = ok && append(buffer, cap, &len, "Connection: %s\r\n",
+                      keep_alive ? "keep-alive" : "close");
 
     for (int i = 0; ok && i < res->header_count; i++)
     {
