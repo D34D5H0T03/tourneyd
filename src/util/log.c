@@ -1,56 +1,80 @@
 #include "util/log.h"
+#include <errno.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <time.h>
 #include <unistd.h>
-#include <string.h>
 
-#define BUFFER_SIZE 1024
+/* One log line is one write(). Writes up to PIPE_BUF (4096) bytes are atomic on pipes, and
+   children share the file offset, so lines from different processes never interleave. */
+#define LOG_LINE_MAX 2048
 
-// helper for writing the logs
-static void log_write(const char *level, const char *fmt, va_list args){
-    char buffer[BUFFER_SIZE];
+static log_level_t min_level = LOG_INFO;     /* written once before fork, read-only after */
 
-    // get current time
+void log_set_level(log_level_t level) { min_level = level; }
+
+static void emit(int fd, const char *buf, size_t len) { // make sure write() syscall writes everything
+    while (len > 0) {
+        ssize_t w = write(fd, buf, len);
+        if (w < 0) { 
+            // EINTR retry prevents lost logs if a signal interrupts the write
+            if (errno == EINTR) continue; 
+            return; 
+        }
+        buf += w;
+        len -= (size_t)w;
+    }
+}
+
+static void log_write(int fd, const char *tag, const char *fmt, va_list ap) { 
+    int saved_errno = errno;                // saves the errno if crashed
+    char buf[LOG_LINE_MAX];
+
+    // timestamps
     time_t now = time(NULL);
-    struct tm tm_info;
+    struct tm tm;
+    gmtime_r(&now, &tm);
     
-    // gmtime_r is thread and fork safe
-    gmtime_r(&now, &tm_info);
+    // ISO 8601 Timestamp
+    size_t off = strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
+    
+    // Inject Process ID
+    int p = snprintf(buf + off, sizeof(buf) - off, " %s pid=%ld ", tag, (long)getpid());
+    if (p > 0) off += (size_t)p;
+    
+    // Overflow safety clamp
+    if (off >= sizeof(buf) - 1) off = sizeof(buf) - 2;   /* keeps the math safe */
 
-    // write the timestamp into the buffer
-    int offset = strftime(buffer, sizeof(buffer), "[%Y-%m-%d %H:%M:%S] ", &tm_info);
+    size_t room = sizeof(buf) - off - 1;      /* reserve one byte for the newline */
+    int n = vsnprintf(buf + off, room + 1, fmt, ap);
+    size_t len = n < 0 ? 0 : ((size_t)n > room ? room : (size_t)n);
 
-    // log level (INFO/ERROR)
-    offset += snprintf(buffer + offset, sizeof(buffer) - offset, "[%s] ", level);
-
-    // append the user's formatted string
-    int len = vsnprintf(buffer + offset, sizeof(buffer) - offset, fmt, args);
-    if(len > 0){
-        offset += len;
+    // Sanitize output: scrub control characters to prevent terminal corruption
+    for (size_t i = 0; i < len; i++) {       
+        unsigned char ch = (unsigned char)buf[off + i];
+        if (ch < 0x20 || ch == 0x7f) buf[off + i] = '?';
     }
+    
+    off += len;
+    
 
-    // leaving exactly 2 bytes for \n and \0
-    if(offset >= (int)sizeof(buffer)){
-        offset = sizeof(buffer) - 2;
-    }
+    buf[off++] = '\n';                     
 
-    buffer[offset++] = '\n';
-    buffer[offset] = '\0';
-
-    // write to file descriptor 2 (stderr), cast return value to void to suppress compiler warnings
-    (void)write(STDERR_FILENO, buffer, offset);
+    emit(fd, buf, off);
+    errno = saved_errno; // Restore original errno before returning
 }
 
-void log_info(const char *fmt, ...){
-    va_list args;
-    va_start(args, fmt);
-    log_write("INFO", fmt, args);
-    va_end(args);
+void log_debug(const char *fmt, ...) {
+    if (min_level > LOG_DEBUG) return;
+    va_list ap; va_start(ap, fmt); log_write(STDERR_FILENO, "[DEBUG]", fmt, ap); va_end(ap);
 }
-
-void log_error(const char *fmt, ...){
-    va_list args;
-    va_start(args, fmt);
-    log_write("ERROR", fmt, args);
-    va_end(args);
+void log_info(const char *fmt, ...) {
+    if (min_level > LOG_INFO) return;
+    va_list ap; va_start(ap, fmt); log_write(STDERR_FILENO, "[INFO]", fmt, ap); va_end(ap);
+}
+void log_error(const char *fmt, ...) {
+    va_list ap; va_start(ap, fmt); log_write(STDERR_FILENO, "[ERROR]", fmt, ap); va_end(ap);
+}
+void log_access(const char *fmt, ...) {
+    va_list ap; va_start(ap, fmt); log_write(STDOUT_FILENO, "[ACCESS]", fmt, ap); va_end(ap);
 }
