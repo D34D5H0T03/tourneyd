@@ -13,6 +13,6 @@ typedef struct {
 } http_conn_opts_t;
 
 // The main HTTP connection orchestrator
-void http_connection_handle(conn_t *client, void *ctx);
+void http_connection_handle(conn_t *client, const void *ctx);
 
 #endif // HTTP_CONNECTION_H

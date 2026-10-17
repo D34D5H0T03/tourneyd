@@ -12,6 +12,9 @@
 
 #define READ_BUFFER_SIZE 8192
 
+_Static_assert(READ_BUFFER_SIZE >= 2 * MAX_LINE_LENGTH,
+               "read buffer must hold a partial line plus new data");
+
 typedef struct {
     char buffer[READ_BUFFER_SIZE];
     size_t have;
@@ -29,7 +32,7 @@ static int read_request(conn_t *client, http_request_t *req, http_conn_state_t *
          // client, pointer increment and size reduction
         ssize_t n = conn_read(client, state->buffer + state->have, sizeof(state->buffer) - state->have);
 
-        if(n == -2){ // case of timeout
+        if(n == CONN_TIMEOUT){ // case of timeout
             req->error_status = HTTP_STATUS_REQUEST_TIMEOUT;
             req->state = PARSE_ERROR;
             break;
@@ -72,8 +75,15 @@ static int send_response(conn_t *client, const http_response_t *res,
     return rc;
 }
 
-void http_connection_handle(conn_t *client, void *ctx){
+void http_connection_handle(conn_t *client, const void *ctx){
     const http_conn_opts_t *opts = (const http_conn_opts_t *)ctx;
+
+    // Guard against miswired config passing
+    if (!opts) {
+        log_error("http: no configuration context provided");
+        conn_close(client);
+        return;
+    }
 
     conn_set_deadline(client, opts->request_timeout_sec);
     http_conn_state_t state = {0};

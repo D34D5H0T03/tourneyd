@@ -4,6 +4,8 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+#define CONN_TIMEOUT (-2)
+
 // empty container for client information to hand to kernel
 typedef struct {
     int fd; //file descriptor of a socket. TCP reliable pipe for data.
