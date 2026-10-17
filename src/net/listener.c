@@ -3,6 +3,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <errno.h>
 
 #include "net/listener.h"
 #include "util/log.h"
@@ -13,14 +14,16 @@ int listener_create(const char *bind_addr, const char *port, int backlog){
     struct addrinfo *p; // pointer to iterate through res
     
     int listener_fd = -1; // default to -1
-    int yes = 1; //for SIGINT handling. setsocketopt() takes a void* so has to pass by reference
-    
+    int saved_errno = 0;
+    int yes = 1; // SO_REUSEADDR allows restart while old connections are in TIME_WAIT
 
     // preparing hints
     memset(&hints, 0, sizeof(hints)); // zero initialization
     hints.ai_family = AF_UNSPEC; // Address family unspecified INET or INET6 for IPv4 and IPv6
     hints.ai_socktype = SOCK_STREAM; // TCP
-    hints.ai_flags = AI_PASSIVE; // tells that the result would be used for bind() rather that connect()
+
+    // Numerichost to avoid dns resolution
+    hints.ai_flags = AI_PASSIVE | AI_NUMERICHOST; // tells that the result would be used for bind() rather that connect()
 
     // getting the linked list of available addresses for the port
     int status = getaddrinfo(bind_addr, port, &hints, &res);
@@ -33,23 +36,20 @@ int listener_create(const char *bind_addr, const char *port, int backlog){
     for(p = res; p != NULL; p = p->ai_next){
 
         // try to create a socket
-        listener_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        listener_fd = socket(p->ai_family, p->ai_socktype | SOCK_CLOEXEC, p->ai_protocol);
         if(listener_fd < 0){
             continue; // failed to create, onto the next one
         }
 
         // settign socket option so port can be resued after ctr+c duuring debugging
-        if(setsockopt(listener_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1){
-            log_error("Set socket option failed.");
+        // SO_REUSEADDR allows restart while old connections are in TIME_WAIT
+        if(setsockopt(listener_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) < 0 ||
+           bind(listener_fd, p->ai_addr, p->ai_addrlen) < 0) {   // try to bind the socket to the port
+            
+            saved_errno = errno;
             close(listener_fd);
-            freeaddrinfo(res);
-            return -1;
-        }
-
-        // try to bind the socket to the port
-        if(bind(listener_fd, p->ai_addr, p->ai_addrlen) < 0){
-            close(listener_fd);
-            continue; //try the next one
+            listener_fd = -1;
+            continue;         // try the next address in the getaddrinfo list
         }
 
         // if we reach this then we found the first address and bind worked
@@ -58,8 +58,13 @@ int listener_create(const char *bind_addr, const char *port, int backlog){
 
     freeaddrinfo(res); // free the addrinfo struct
 
+    if (listener_fd < 0) {
+        log_error("cannot bind %s:%s: %s", bind_addr, port, strerror(saved_errno));
+        return -1;
+    }
+
     if(listen(listener_fd, backlog) < 0){
-        log_error("listen failed");
+        log_error("listen failed: %s", strerror(errno));
         close(listener_fd);
         return -1; // listen failure
     }
