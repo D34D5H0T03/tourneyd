@@ -116,8 +116,5 @@ void static_files_handler(const http_request_t *req, http_response_t *res){
     if(http_response_set_body(res, buf, got, http_mime_from_path(real)) < 0){
         http_response_set_error(res, HTTP_STATUS_INTERNAL_SERVER_ERROR);
     }
-    else{
-        http_response_add_header(res, "X-Content-Type-Options", "nosniff");
-    }
     free(buf);
 }
