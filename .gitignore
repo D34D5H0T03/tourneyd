@@ -24,3 +24,6 @@ core
 vgcore.*
 !src/core/
 !include/core/
+
+#fuzzing
+tests/fuzz/corpus/

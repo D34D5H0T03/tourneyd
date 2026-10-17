@@ -353,8 +353,9 @@ size_t http_parse(http_request_t *req, const char* buffer, size_t buffer_len){
             }
         }
 
-        if(line_len > MAX_LINE_LENGTH){
-            req->error_status = HTTP_STATUS_HEADER_TOO_LARGE;
+        if (line_len > MAX_LINE_LENGTH) {
+            req->error_status = (req->state == PARSE_REQ_LINE) ? HTTP_STATUS_URI_TOO_LONG
+                                                               : HTTP_STATUS_HEADER_TOO_LARGE;
             req->state = PARSE_ERROR;
             break;
         }
