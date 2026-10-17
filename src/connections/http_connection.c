@@ -102,7 +102,7 @@ static int read_request(conn_t *client, http_request_t *req, http_conn_state_t *
             {
                 continue_sent = 1;
                 if (expects_continue(req))
-                    conn_write_all(client, cont, sizeof(cont - 1));
+                    conn_write_all(client, cont, sizeof(cont) - 1);
             }
             if (st->have == sizeof(st->buffer))
             { // should be unreachable
