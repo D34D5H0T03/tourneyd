@@ -1,107 +1,196 @@
 #include "concurrency/concurrency.h"
+#include "net/listener.h"
+#include "util/clock.h"
 #include "util/log.h"
+#include "util/shutdown.h"
 
-#include <unistd.h>
-#include <signal.h>
-#include <sys/wait.h>
 #include <errno.h>
-#include <string.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
-#define LIFETIME_CAP 30
+#define ACCEPT_POLL_MS 500
+#define ACCEPT_BACKOFF_US 100000
+#define DRAIN_POLL_US 50000
+#define KILL_WAIT_MS 1000
 
-static volatile sig_atomic_t active_children = 0;
+static volatile sig_atomic_t active_children;
+static pid_t *volatile child_pids; // one slot per allowed worker 
+static volatile int n_slots;
 
-// reaps zombie child processes without blocking parent
-static void sigchld_handler(int sig){
+static void sigchld_handler(int sig)
+{
     (void)sig;
-
-    // saving errno because waitpid might change it
-    int saved_errno = errno;
-
-    // WNOHANG ensures no block untill child fully exits
-    while(waitpid(-1, NULL, WNOHANG) > 0){
+    int saved = errno;
+    pid_t pid;
+    while ((pid = waitpid(-1, NULL, WNOHANG)) > 0)
+    {
         active_children--;
+        for (int i = 0; i < n_slots; i++)
+            if (child_pids[i] == pid)
+            {
+                child_pids[i] = 0;
+                break;
+            }
     }
-
-    errno = saved_errno;
+    errno = saved;
 }
 
-static int install_sigchld(void){
+static int install_sigchld(void)
+{
     struct sigaction sa;
     sa.sa_handler = sigchld_handler;
-
     sigemptyset(&sa.sa_mask);
-
-    // SA_RESTART automatically restarts inturrpted syscalls
-    // SA_NOCLDSTOP ensures no signal when children just pause or resume
     sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
-
     return sigaction(SIGCHLD, &sa, NULL);
 }
 
-int concurrency_run(int listen_fd, conn_handler_fn handler, const void *ctx, const concurrency_opts_t *opts){
-    if (!opts) return -1; // Guard against NULL config
+static void track_child(pid_t pid) // registers children pid
+{ // called with signals blocked 
+    for (int i = 0; i < n_slots; i++)
+        if (child_pids[i] == 0)
+        {
+            child_pids[i] = pid;
+            return;
+        }
+}
 
-    // handle signals with sigaction
-    if(install_sigchld() < 0){
-        return -1; //setup failed
+static void signal_children(int sig)
+{ // kills children via SIGTRM
+    for (int i = 0; i < n_slots; i++)
+    {
+        pid_t p = child_pids[i];
+        if (p > 0)
+            kill(p, sig);
+    }
+}
+
+static void wait_children(long long ms)
+{
+    long long end = clock_ms() + ms;
+    while (active_children > 0 && clock_ms() < end)
+        usleep(DRAIN_POLL_US);
+}
+
+static void drain_children(int grace_sec)
+{ // sends terminate signal to each children, if not all children has been killed after the wait time, it sends SIGKILL to forcibly kill all children
+    log_info("shutdown: draining %d connection(s), grace %ds", (int)active_children, grace_sec);
+    signal_children(SIGTERM);
+    wait_children((long long)grace_sec * 1000);
+    if (active_children > 0)
+    {
+        log_info("shutdown: killing %d straggler(s)", (int)active_children);
+        signal_children(SIGKILL);
+        wait_children(KILL_WAIT_MS);
+    }
+}
+
+int concurrency_run(int listen_fd, conn_handler_fn handler, const void *ctx,
+                    const concurrency_opts_t *opts)
+{
+    // no or malicious config guard
+    if (!opts || opts->max_workers < 1)
+        return -1;
+
+    // initialize the child_pid lookup table
+    child_pids = calloc((size_t)opts->max_workers, sizeof *child_pids);
+    if (!child_pids)
+        return -1;
+    n_slots = opts->max_workers;
+    if (install_sigchld() < 0)
+    {
+        free(child_pids);
+        child_pids = NULL;
+        n_slots = 0;
+        return -1;
     }
 
-    sigset_t mask, oldmask;
-    sigemptyset(&mask);
-    sigaddset(&mask, SIGCHLD);
+    sigset_t block, old; // block all three so the checks below are race-free 
+    sigemptyset(&block);
+    sigaddset(&block, SIGCHLD);
+    sigaddset(&block, SIGINT);
+    sigaddset(&block, SIGTERM);
 
-    while(1){
+    int rc = 0;
+    while (!shutdown_requested())
+    {
+        // cap: wait for a child to exit; any signal wakes sigsuspend, so shutdown is noticed 
+        sigprocmask(SIG_BLOCK, &block, &old);
+        while (active_children >= opts->max_workers && !shutdown_requested())
+            sigsuspend(&old);
+        sigprocmask(SIG_SETMASK, &old, NULL);
+        if (shutdown_requested())
+            break;
 
-        // process cap: safely block SIGCHLD, check cap and suspend if full
-        sigprocmask(SIG_BLOCK, &mask, &oldmask);
-        while(active_children >= opts->max_workers){
-            sigsuspend(&oldmask);
+        // waits 500ms for a client, if no client arrives it checks flag for a requested shutdown
+        int ready = listener_wait(listen_fd, ACCEPT_POLL_MS);
+        if (ready == 0)
+            continue; // timeout or signal: re-check the flag 
+        if (ready < 0)
+        {
+            log_error("poll: %m");
+            rc = -1;
+            break;
         }
-        sigprocmask(SIG_SETMASK, &oldmask, NULL); // unblock
-        // setup so connection is established with clients that completed the TCP handshake
+
+        // client arrives, accept
         conn_t client;
-        if(conn_accept(listen_fd, &client) < 0){
-            if (concurrency_handle_accept_err() < 0) return -1;
+        if (conn_accept(listen_fd, &client) < 0)
+        {
+            if (errno == EBADF || errno == EINVAL || errno == ENOTSOCK)
+            {
+                log_error("accept: %m");
+                rc = -1;
+                break; // listener is gone 
+            }
+            if (errno != ECONNABORTED)
+            { // EMFILE, ENOBUFS...: back off 
+                log_error("accept: %m");
+                usleep(ACCEPT_BACKOFF_US);
+            }
             continue;
         }
 
-        // safe fork(), block SIGCHLD so children don't exit before increment
-        sigprocmask(SIG_BLOCK, &mask, &oldmask);
+        // safe forking (blocks signals then unblocks it after forking)
+        sigprocmask(SIG_BLOCK, &block, &old);
         pid_t pid = fork();
-        if(pid > 0){
+        if (pid > 0)
+        { // parent process
             active_children++;
+            track_child(pid);
         }
-        sigprocmask(SIG_SETMASK, &oldmask, NULL); // unblock
+        if (pid == 0) //child process
+            sigprocmask(SIG_SETMASK, &old, NULL); // child undoes the inherited mask 
+        else
+            sigprocmask(SIG_SETMASK, &old, NULL);
 
-        if (pid < 0){
-            // fork failed so log error and drop client
-            log_error("fork failed: %s", strerror(errno));
+        if (pid < 0)
+        { // fork failed
+            log_error("fork: %m");
             conn_close(&client);
             continue;
         }
-
-        if(pid == 0){
-            // inside the child process
-
-            // resetting signal process mask with default in case child needs to spawn its own script
-            sigprocmask(SIG_SETMASK, &oldmask, NULL);
+        if (pid == 0)
+        {
             signal(SIGCHLD, SIG_DFL);
-
-
-            alarm(LIFETIME_CAP); // for slowloris
-            close(listen_fd); //child process doesn't need listener it only handles client
-            handler(&client, ctx); //handle client requests
-            conn_close(&client); //close the connection and exit
+            close(listen_fd); // child doesn't need listener
+            handler(&client, ctx); // child handles the client and then exits
+            conn_close(&client);
             _exit(0);
         }
-
-        // parent process
-        conn_close(&client); // parent doesn't handle client
+        conn_close(&client); // parent's copy 
     }
-    return 0; //unreachable because currently while(1). only stop with SIGINT
+
+    drain_children(opts->shutdown_grace_sec);
+
+    signal(SIGCHLD, SIG_DFL); // stop the handler before freeing its table 
+    n_slots = 0;
+    free(child_pids);
+    child_pids = NULL;
+    return rc;
 }
 
 void concurrency_shutdown(void){
-    // later during server hardening phase
+     shutdown_request(); 
 }
