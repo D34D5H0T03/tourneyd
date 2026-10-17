@@ -1,8 +1,11 @@
 #include "concurrency/concurrency.h"
+#include "util/log.h"
+
 #include <unistd.h>
 #include <signal.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include <string.h>
 
 #define LIFETIME_CAP 30
 
@@ -36,7 +39,9 @@ static int install_sigchld(void){
     return sigaction(SIGCHLD, &sa, NULL);
 }
 
-int concurrency_run(int listen_fd, conn_handler_fn handler, void *ctx, const concurrency_opts_t *opts){
+int concurrency_run(int listen_fd, conn_handler_fn handler, const void *ctx, const concurrency_opts_t *opts){
+    if (!opts) return -1; // Guard against NULL config
+
     // handle signals with sigaction
     if(install_sigchld() < 0){
         return -1; //setup failed
@@ -57,6 +62,7 @@ int concurrency_run(int listen_fd, conn_handler_fn handler, void *ctx, const con
         // setup so connection is established with clients that completed the TCP handshake
         conn_t client;
         if(conn_accept(listen_fd, &client) < 0){
+            if (concurrency_handle_accept_err() < 0) return -1;
             continue;
         }
 
@@ -69,13 +75,20 @@ int concurrency_run(int listen_fd, conn_handler_fn handler, void *ctx, const con
         sigprocmask(SIG_SETMASK, &oldmask, NULL); // unblock
 
         if (pid < 0){
-            // fork failed so drop client
+            // fork failed so log error and drop client
+            log_error("fork failed: %s", strerror(errno));
             conn_close(&client);
             continue;
         }
 
         if(pid == 0){
             // inside the child process
+
+            // resetting signal process mask with default in case child needs to spawn its own script
+            sigprocmask(SIG_SETMASK, &oldmask, NULL);
+            signal(SIGCHLD, SIG_DFL);
+
+
             alarm(LIFETIME_CAP); // for slowloris
             close(listen_fd); //child process doesn't need listener it only handles client
             handler(&client, ctx); //handle client requests
