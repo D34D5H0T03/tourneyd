@@ -233,7 +233,7 @@ static int read_request(conn_t *client, http_request_t *req, http_conn_state_t *
             }
         }
 
-        ssize_t n = conn_read(client, st->buffer + st->have, sizeof(st->buffer - st->have));
+        ssize_t n = conn_read(client, st->buffer + st->have, sizeof(st->buffer) - st->have);
         if (n == CONN_TIMEOUT)
         {
             if (!started)
