@@ -1,4 +1,5 @@
 #include "core/server.h"
+#include "core/signals.h"
 #include "net/listener.h"
 #include "concurrency/concurrency.h"
 #include "connections/http_connection.h"
@@ -20,7 +21,10 @@ static concurrency_opts_t conc_opts;
 int server_init(const config_t *cfg) {
     server_cfg = cfg;
 
-    signal(SIGPIPE, SIG_IGN);
+    if (signals_install() < 0) {
+        log_error("Failed to install signal handlers");
+        return -1;
+    }
 
     // passing server config for http options
     http_opts.limits.max_body_size = cfg->max_body_size;
