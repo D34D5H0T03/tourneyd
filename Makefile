@@ -2,6 +2,12 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -g -Iinclude
 
+# Conditionally apply sanitizers if SAN=1 is passed
+ifeq ($(SAN), 1)
+    CFLAGS += -fsanitize=address,undefined -fno-sanitize-recover=undefined
+endif
+export CFLAGS # Export so bash scripts can inherit it
+
 # Default concurrency model (can be overridden via command line)
 CONCURRENCY ?= fork
 
@@ -42,3 +48,30 @@ clean:
 	rm -rf $(BUILD_DIR)/*
 
 .PHONY: all clean
+
+# For Fuzzer
+FUZZ_FLAGS := -std=gnu11 -g -O1 -Iinclude -fsanitize=address,undefined -fno-sanitize-recover=undefined
+FUZZ_SRC   := src/http/parser.c src/http/status.c
+
+build/fuzz_driver: tests/fuzz/fuzz_driver.c tests/fuzz/fuzz_parser.c $(FUZZ_SRC)
+	$(CC) $(FUZZ_FLAGS) $^ -o $@
+
+fuzz: build/fuzz_driver
+	ASAN_OPTIONS=abort_on_error=1 ./build/fuzz_driver tests/fuzz/corpus $(or $(ITER),2000000)
+
+fuzz-clang:
+	@mkdir -p build/corpus
+	clang $(FUZZ_FLAGS) -fsanitize=fuzzer tests/fuzz/fuzz_parser.c $(FUZZ_SRC) -o build/fuzz_clang
+	./build/fuzz_clang build/corpus tests/fuzz/corpus -dict=tests/fuzz/parser.dict \
+	    -max_len=16384 -max_total_time=$(or $(SECS),600) -artifact_prefix=build/
+.PHONY: fuzz fuzz-clang
+
+# tests
+
+test: all
+	@echo "=== RUNNING UNIT TESTS ==="
+	@bash scripts/run_unit_tests.sh
+	@echo "\n=== RUNNING INTEGRATION TESTS ==="
+	@bash tests/integration/run_all.sh
+
+.PHONY: test
