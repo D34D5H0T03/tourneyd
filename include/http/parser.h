@@ -4,6 +4,9 @@
 #include "http/status.h"
 #include <stddef.h>
 
+#define ASCII_MIN_PRINTABLE 0x20 // Space character (Start of printable ASCII)
+#define ASCII_DEL 0x7F           // Delete character (End of standard printable ASCII)
+
 // strict fields to prevent buffer overflows or Dos attacks
 #define MAX_HEADERS        50
 #define MAX_HEADER_NAME    64

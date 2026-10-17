@@ -5,8 +5,6 @@
 #include <string.h>
 #include <strings.h> 
 
-#define ASCII_MIN_PRINTABLE 0x20 // Space character (Start of printable ASCII)
-#define ASCII_DEL 0x7F           // Delete character (End of standard printable ASCII)
 #define CRLF_LEN 2
 
 
