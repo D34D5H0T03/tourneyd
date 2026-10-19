@@ -6,6 +6,7 @@
 #include "http/router.h"
 #include "app/routes.h"
 #include "util/log.h"
+#include "db/db.h"
 #include "app/static_files.h"
 
 
@@ -38,15 +39,20 @@ int server_init(const config_t *cfg) {
     conc_opts.max_workers = cfg->max_children;
     conc_opts.shutdown_grace_sec = cfg->shutdown_grace_sec;
 
+    router_init();
+    app_register_routes();
+
     // Initialize the doc root directory path
     if (static_files_init(cfg->doc_root) < 0) {
         log_error("Fatal: failed to initialize static document root: %s", cfg->doc_root);
         return -1;
     }
 
-    router_init();
-    app_register_routes();
-    // static_files_init(cfg->doc_root); <-- Added in Phase A4
+    // db init
+    if (db_init(cfg->db_path, cfg->migrations_dir, cfg->db_busy_timeout_ms) != DB_OK) {
+        log_error("Fatal: failed to initialize database at %s", cfg->db_path);
+        return -1;
+    }
 
     log_info("Starting tourneyd on port %s...", cfg->port);
     server_fd = listener_create(cfg->bind_addr, cfg->port, cfg->backlog);

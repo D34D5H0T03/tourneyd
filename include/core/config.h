@@ -9,6 +9,7 @@
 #define CONFIG_MAX_PATH_LEN 256
 
 typedef struct {
+    // server
     char   port[CONFIG_MAX_PORT_LEN];
     char   bind_addr[CONFIG_MAX_ADDR_LEN];
     char   doc_root[CONFIG_MAX_PATH_LEN];
@@ -21,6 +22,12 @@ typedef struct {
     size_t max_header_bytes;
     int    shutdown_grace_sec;
     int    trust_proxy;
+
+    // db
+    char   db_path[CONFIG_MAX_PATH_LEN];
+    char   migrations_dir[CONFIG_MAX_PATH_LEN];
+    int    db_busy_timeout_ms;
+    int    lab_enabled;
 } config_t;
 
 /* 
