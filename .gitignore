@@ -10,6 +10,9 @@ tourneyd
 
 # databases and runtime data
 *.db
+*.db-wal
+*.db-shm
+data/
 *.sqlite
 *.log
 
