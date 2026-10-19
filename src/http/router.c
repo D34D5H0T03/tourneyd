@@ -13,6 +13,7 @@ typedef struct {
     size_t path_len;
     int is_prefix;
     route_handler_fn handler;
+    unsigned flags;
 } route_t;
 
 
@@ -28,7 +29,7 @@ void router_init(void){
 }
 
 static int add_route(http_method_t method, const char *path,
-     route_handler_fn handler, int is_prefix){
+     route_handler_fn handler, int is_prefix, unsigned flags){
     
     // guard clauses
     if(!path || !handler || path[0] != '/' || method == METHOD_UNKNOWN){
@@ -52,17 +53,18 @@ static int add_route(http_method_t method, const char *path,
     r->path_len = len;
     r->is_prefix = is_prefix;
     r->handler = handler;
+    r->flags = flags;
 
     return 0; //successfully added path
 }
 
 // adds an exact route
-int router_add(http_method_t method, const char *path, route_handler_fn handler){
-    return add_route(method, path, handler, 0);
+int router_add(http_method_t method, const char *path, route_handler_fn handler, unsigned flags){
+    return add_route(method, path, handler, 0, flags);
 }
 // adds a wildcard prefix
-int router_add_prefix(http_method_t method, const char *prefix, route_handler_fn handler){
-    return add_route(method, prefix, handler, 1);
+int router_add_prefix(http_method_t method, const char *prefix, route_handler_fn handler, unsigned flags){
+    return add_route(method, prefix, handler, 1, flags);
 }
 
 // sets the fallback handler
@@ -155,6 +157,4 @@ void router_dispatch(const http_request_t *req, http_response_t *res){
 
     http_response_set_error(res, HTTP_STATUS_NOT_FOUND);
 }
-
-
 

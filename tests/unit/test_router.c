@@ -45,7 +45,7 @@ static const char *get_header(const http_response_t *res, const char *name) {
 // --- Test Cases ---
 static void test_exact_match() {
     router_init();
-    router_add(METHOD_GET, "/a", handler_a);
+    router_add(METHOD_GET, "/a", handler_a, ROUTE_DEFAULT);
     
     http_response_t res;
     dispatch(METHOD_GET, "/a", &res);
@@ -57,7 +57,7 @@ static void test_exact_match() {
 
 static void test_head_alias() {
     router_init();
-    router_add(METHOD_GET, "/a", handler_a); // Register GET
+    router_add(METHOD_GET, "/a", handler_a, ROUTE_DEFAULT); // Register GET
     
     http_response_t res;
     dispatch(METHOD_HEAD, "/a", &res);       // Send HEAD
@@ -70,8 +70,8 @@ static void test_head_alias() {
 
 static void test_method_not_allowed() {
     router_init();
-    router_add(METHOD_GET, "/a", handler_a);
-    router_add(METHOD_POST, "/a", handler_b);
+    router_add(METHOD_GET, "/a", handler_a, ROUTE_DEFAULT);
+    router_add(METHOD_POST, "/a", handler_b, ROUTE_DEFAULT);
     
     http_response_t res;
     dispatch(METHOD_PUT, "/a", &res); // Send an unsupported method
@@ -83,8 +83,8 @@ static void test_method_not_allowed() {
 
 static void test_prefix_matching() {
     router_init();
-    router_add_prefix(METHOD_GET, "/api/", handler_a);
-    router_add_prefix(METHOD_GET, "/api/v2/", handler_b);
+    router_add_prefix(METHOD_GET, "/api/", handler_a, ROUTE_DEFAULT);
+    router_add_prefix(METHOD_GET, "/api/v2/", handler_b, ROUTE_DEFAULT);
     
     http_response_t res;
     
@@ -93,7 +93,7 @@ static void test_prefix_matching() {
     assert(strcmp(get_header(&res, "X-Handler"), "B") == 0);
     
     // 2. Exact match should beat prefix
-    router_add(METHOD_GET, "/api/users", handler_a); // exact
+    router_add(METHOD_GET, "/api/users", handler_a, ROUTE_DEFAULT); // exact
     dispatch(METHOD_GET, "/api/users", &res);
     assert(strcmp(get_header(&res, "X-Handler"), "A") == 0);
     
@@ -125,15 +125,15 @@ static void test_table_limits() {
     router_init();
     
     // 1. Prefix without trailing slash must be rejected
-    assert(router_add_prefix(METHOD_GET, "/api", handler_a) == -1);
+    assert(router_add_prefix(METHOD_GET, "/api", handler_a, ROUTE_DEFAULT) == -1);
     
     // 2. Fill the table to exactly 64 routes
     for (int i = 0; i < 64; i++) {
-        assert(router_add(METHOD_GET, "/x", handler_a) == 0);
+        assert(router_add(METHOD_GET, "/x", handler_a, ROUTE_DEFAULT) == 0);
     }
     
     // 3. The 65th route should be rejected
-    assert(router_add(METHOD_GET, "/y", handler_a) == -1);
+    assert(router_add(METHOD_GET, "/y", handler_a, ROUTE_DEFAULT) == -1);
     
     printf("[OK] test_table_limits\n");
 }
