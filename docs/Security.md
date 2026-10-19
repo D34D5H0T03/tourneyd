@@ -1,38 +1,306 @@
-# Security & Hardening Posture (v0.5)
+# Security Notes
 
-This document outlines the security mechanisms, enforced boundaries, and known architectural limits of `tourneyd` following the Phase A5 hardening and fuzzing validation.
+**Applies to:** tourneyd `v0.5-server-complete` (fork concurrency model)
+**Last updated:** 2026-10-18
 
-## 1. Enforced Resource Limits
-To prevent Denial of Service (DoS) via resource exhaustion, strict compile-time and kernel-enforced limits are applied to every connection and worker process.
+This document records what the server defends against, how each defense works, where it lives in the code, how it was verified, and what is deliberately **not** covered yet. It is meant to be updated whenever a limit, a defense, or a test changes.
 
-* **Worker Process Cap:** The server concurrency is strictly capped (e.g., 64 concurrent children via `max_children`) to prevent fork-bombing and RAM exhaustion[cite: 2].
-* **CPU Sandbox:** The Linux kernel `RLIMIT_CPU` strictly limits each worker child to 60 seconds of active compute time (soft limit) and 65 seconds (hard limit via `SIGKILL`) to defeat infinite-loop protocol parsing attacks[cite: 2].
-* **File Descriptor Cap:** `RLIMIT_NOFILE` is capped at 64 per worker, guaranteeing that a rogue worker cannot exhaust the global system file descriptor pool[cite: 2].
-* **Memory Cap:** `RLIMIT_AS` limits the virtual address space of each worker to 256 MB (disabled when AddressSanitizer is active)[cite: 2].
-* **Static File Size Cap:** Requests for static assets exceeding 8 MB (`STATIC_MAX_FILE`) are rejected to prevent Out-Of-Memory (OOM) kills on massive disk reads[cite: 2].
-* **Protocol Framing Limits:** The HTTP parser explicitly enforces maximum buffer constraints:
-  * Maximum line length: 4,096 bytes[cite: 2].
-  * Maximum URI path/query length: 1,024 bytes[cite: 2].
-  * Maximum headers: 50 headers, up to a total block size of 16 KB[cite: 2].
-  * Maximum request body size: 1 MB (`MAX_BODY_SIZE`)[cite: 2].
+---
 
-## 2. Implemented Defenses
-* **Path Traversal & Null-Byte Injection:** 
-  * The `http_url_decode` function explicitly rejects `%00` null-byte injections with a `400 Bad Request`[cite: 2].
-  * Decoded paths containing `/.` are aggressively rejected with a `404 Not Found` before disk access, neutralizing `../` traversal tricks and hiding system dotfiles (e.g., `.git`, `.env`)[cite: 2].
-  * Safe resolution is finalized via POSIX `realpath()`, verifying the normalized path resides strictly inside the `doc_root`[cite: 2].
-* **Fuzzing & Memory Safety:** The incremental HTTP state-machine parser has been mathematically verified for split-invariance and has successfully passed 2,000,000+ iterations under `libFuzzer` combined with AddressSanitizer (ASan) and UndefinedBehaviorSanitizer (UBSan) with zero crashes or leaks[cite: 2].
-* **XSS & Browser Sandboxing:** A centralized response builder injects strict framing and execution policies on all responses, including:
-  * `X-Content-Type-Options: nosniff`[cite: 2].
-  * `X-Frame-Options: DENY`[cite: 2].
-  * `Referrer-Policy: no-referrer`[cite: 2].
-  * `Permissions-Policy: camera=(), microphone=(), geolocation=()`[cite: 2].
-  * `Content-Security-Policy: default-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`[cite: 2].
-* **Log Forging / Sanitization:** Untrusted client inputs (such as the URI target and `User-Agent` headers) are passed through `log_clean()` to scrub control characters (`< 0x20`, `0x7f`), tabs, and quotes (`"`) before hitting `stdout`, protecting downstream JSON parsers and log ingestion tools[cite: 2].
-* **Socket Hijacking:** Client TCP sockets are accepted using `accept4()` with the `SOCK_CLOEXEC` flag[cite: 2]. If a worker process is forced to `exec` a malicious binary, the kernel will instantly close the socket, preventing the attacker from maintaining the active connection[cite: 2].
+## 1. Scope and threat model
 
-## 3. Known Limitations
-* **No Native TLS:** The server operates strictly on plaintext HTTP/1.1[cite: 2]. Transport Layer Security (HTTPS) must be terminated externally via a reverse proxy (e.g., Cloudflare Tunnels, Nginx).
-* **Chunked Transfer Encoding:** Chunked request bodies (`Transfer-Encoding: chunked`) are not supported and safely trigger a `501 Not Implemented` response[cite: 2].
-* **Pipelined Request Limits:** While `max_requests_per_conn` enforces a soft limit by gracefully closing the connection after the maximum threshold is met, a malicious client sending an infinite, unbroken pipeline block is currently parsed in full until the `request_timeout_sec` deadline is breached[cite: 2].
-* **Global Rate Limiting:** The `fork()` architecture isolates memory per connection. Consequently, strict per-IP rate limiting cannot be enforced natively without shared memory or a centralized datastore, relying instead on the reverse proxy layer for IP throttling.
+**In scope:** untrusted HTTP/1.0 and HTTP/1.1 clients, connecting directly or through a Cloudflare quick tunnel, sending arbitrary bytes at the parser, router, static file handler, response builder, logger and connection management.
+
+**Current attack surface is small by design:**
+
+- Static files served from the document root (`GET` and `HEAD`).
+- No accounts, no sessions, no database, no write endpoints.
+- Any demo routes registered in `app/routes.c` are part of the surface. Remove the ones you do not want public before deploying.
+
+**Out of scope for v0.5:**
+
+| Area | Status |
+|---|---|
+| TLS | Not implemented. Cloudflare terminates TLS for tunnel deployments. Own TLS is planned (OpenSSL). |
+| Volumetric / network-layer DoS | Not addressed by the server. The tunnel provider absorbs most of it. |
+| Authentication, sessions, CSRF | Not built yet (arrives with the database and API phases). |
+| Database security | Not built yet (A6). |
+
+**Trust boundaries:**
+
+- Every byte read from a socket is untrusted.
+- The configuration file and command-line flags are trusted (written by the operator).
+- The `CF-Connecting-IP` header is trusted **only** when `trust_proxy` is on, the TCP peer is loopback, and the value parses as an IP address.
+
+---
+
+## 2. Defenses at a glance
+
+| # | Threat | Defense | Where |
+|---|---|---|---|
+| 1 | Direct exposure to the network | Binds `127.0.0.1` by default. The tunnel is outbound-only, so no inbound port or firewall change is needed. | `net/listener.c`, `core/config.c` |
+| 2 | Buffer overflows while parsing | Fixed-size fields, every length checked before any copy, explicit-length operations on network data, NUL-terminated strings built by hand | `http/parser.c` |
+| 3 | Oversized requests | Hard limits on line, header, path, query and body sizes (section 3) | `http/parser.c`, `core/config.c` |
+| 4 | Request smuggling | See section 4.1 | `http/parser.c` |
+| 5 | Path traversal | See section 4.2 | `app/static_files.c`, `http/url.c` |
+| 6 | Response splitting / header injection | CR and LF rejected in header names and values; framing headers are reserved and generated by the serializer | `http/response.c` |
+| 7 | Content sniffing, XSS, clickjacking | Default security headers on every response (section 4.3) | `http/response.c`, `connections/http_connection.c` |
+| 8 | Log injection and forgery | Control characters stripped by the logger; logged fields cleaned and length-bounded; forwarded client IP validated | `util/log.c`, `connections/http_connection.c` |
+| 9 | Slowloris and idle-connection hoarding | Absolute per-phase deadlines (idle vs request) based on a monotonic clock | `net/conn.c`, `connections/http_connection.c` |
+| 10 | Connection floods | Cap on concurrent children; the parent stops calling `accept()` at the cap | `concurrency/fork_model.c` |
+| 11 | Runaway or leaking children | Per-child resource limits (memory, CPU, file descriptors) | `concurrency/fork_model.c` |
+| 12 | Descriptor and zombie leaks | Parent closes the client fd after `fork()`, child closes the listener, `SIGCHLD` reaping, `SOCK_CLOEXEC` | `concurrency/fork_model.c`, `net/conn.c` |
+| 13 | Unclean shutdown | Flag-only signal handlers, drain with a grace period, `SIGKILL` for stragglers | `core/signals.c`, `concurrency/*.c` |
+| 14 | Silent child crashes | Children killed by a signal are reported in the error log | `concurrency/fork_model.c` |
+| 15 | Process death on write to a closed socket | `SIGPIPE` ignored and `MSG_NOSIGNAL` on every send | `core/signals.c`, `net/conn.c` |
+
+---
+
+## 3. Limits reference
+
+### Runtime settings (config file or flags, validated at startup)
+
+| Setting | Default | Key | Enforced in |
+|---|---|---|---|
+| Bind address | `127.0.0.1` | `bind_addr` | listener |
+| Port | `8080` | `port` | listener |
+| Listen backlog | 128 | `backlog` | listener |
+| Concurrent connections (children) | 64 | `max_children` | fork model |
+| Idle timeout (waiting for the next request) | 10 s | `idle_timeout_sec` | connection handler |
+| Request timeout (receiving one request, and the budget for sending the response) | 15 s | `request_timeout_sec` | connection handler |
+| Requests per connection | 100 | `max_requests_per_conn` | connection handler |
+| Max request body | 1 MiB | `max_body_size` | parser |
+| Max total header bytes | 16 KiB | `max_header_bytes` | parser |
+| Shutdown grace period | 10 s | `shutdown_grace_sec` | fork model |
+| Trust forwarded client IP | off | `trust_proxy` | access log |
+
+Runtime values are validated against the compile-time caps below, so a configuration can never promise more than the buffers can hold.
+
+### Compile-time caps (array sizes, in `http/parser.h`)
+
+| Item | Limit |
+|---|---|
+| Header count | 50 |
+| Header name | 64 bytes |
+| Header value | 512 bytes |
+| Request line / any header line | 4096 bytes |
+| Path | 1024 bytes |
+| Query string | 1024 bytes |
+| Method / version | 16 bytes |
+| Request body (absolute cap) | 1 MiB |
+
+### Other fixed limits
+
+| Item | Limit | Where |
+|---|---|---|
+| Static file size | 8 MiB (files are read into memory) | `app/static_files.c` |
+| Per-child address space | 256 MiB (skipped in sanitizer builds) | `concurrency/fork_model.c` |
+| Per-child CPU time | 60 s | `concurrency/fork_model.c` |
+| Per-child open files | 64 | `concurrency/fork_model.c` |
+| Log line | 2048 bytes (one `write()` per line) | `util/log.c` |
+
+### Status codes returned for rejected input
+
+| Status | Meaning in this server |
+|---|---|
+| 400 | Malformed request, forbidden characters, conflicting or invalid `Content-Length`, missing `Host` on HTTP/1.1, blocked path syntax |
+| 404 | Unknown path, and also every blocked static path (traversal, dotfiles, symlinks escaping the root, directories). A blocked path is never confirmed to exist. |
+| 405 | Path exists but the method is not allowed (with an `Allow` header) |
+| 408 | A partially received request stalled past its deadline (a silent idle connection is closed without a response) |
+| 413 | Declared body larger than the limit |
+| 414 | Request target too long |
+| 431 | Header too long, too many headers, or total header bytes over the limit |
+| 500 | Internal failure (for example an allocation failure under the memory limit) |
+| 501 | Unknown method, or `Transfer-Encoding` (chunked bodies are not supported) |
+| 505 | HTTP version other than 1.0 or 1.1 |
+
+---
+
+## 4. How the main defenses work
+
+### 4.1 Parsing and request smuggling
+
+- **Incremental, line-based parser.** It only consumes complete lines, and the caller's buffer holds any partial data, so the same parser is safe under any delivery pattern (one byte at a time, or many requests at once).
+- **Strict line endings.** Only CRLF terminates a line. A bare LF never completes a line, so the request cannot be completed that way and is cut off by the deadline.
+- **Header names must be HTTP token characters.** Control characters (including NUL, which would make string comparisons disagree with other components) and whitespace are rejected. A leading-whitespace line (obsolete line folding) is therefore rejected too.
+- **Control characters and DEL are rejected in header values** (horizontal tab is allowed).
+- **`Content-Length` is parsed digit by digit** with the limit checked inside the loop, so it cannot overflow, and a value that is empty, negative, or contains anything but digits is rejected.
+- **Conflicting duplicate `Content-Length` headers** are rejected. Identical duplicates are accepted.
+- **`Transfer-Encoding` is rejected with 501**, which also covers the `Content-Length` plus `Transfer-Encoding` smuggling shape.
+- **HTTP/1.1 requests must include `Host`.**
+- **Request target rules.** It must start with `/` (so absolute-form targets and `*` are refused), and control characters anywhere in it are rejected. The query string is split off at the first `?` and kept separate from the path. Neither is percent-decoded by the parser.
+- **Pipelining is safe.** Bytes after a completed request stay in the connection buffer and are parsed as the next request. After any parse error the connection is closed, because the stream position can no longer be trusted.
+
+### 4.2 Static files and path traversal
+
+The handler applies these steps, in this order, for every request:
+
+1. Only `GET` and `HEAD` are accepted.
+2. **Percent-decode first**, rejecting malformed escapes and encoded NUL (`%00`). Decoding before checking means encoded `..` sequences are seen as what they are.
+3. **Reject any path containing `/.`**, which blocks `..` segments and every dotfile (`.git`, `.env`, `.htaccess`, ...) before the filesystem is touched.
+4. Append `index.html` to paths ending in `/`.
+5. Resolve with `realpath()` and require the result to be inside the **resolved** document root. The comparison checks for `/` or end-of-string after the root prefix, so a sibling directory such as `public-secret` cannot pass as `public`. Because `realpath()` resolves symlinks, a link that points outside the root is rejected.
+6. `open()` the file and call `fstat()` **on the open descriptor** (no check-then-use race), and require a regular file.
+7. Enforce the 8 MiB size cap.
+8. Every rejection is a plain **404**, so the server never confirms whether a protected path exists.
+
+### 4.3 Response hardening
+
+Every response, including error pages, carries:
+
+| Header | Value / purpose |
+|---|---|
+| `X-Content-Type-Options` | `nosniff` |
+| `Content-Security-Policy` | `default-src 'self'` plus `img-src 'self' data:`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'` |
+| `X-Frame-Options` | `DENY` |
+| `Referrer-Policy` | `no-referrer` |
+| `Permissions-Policy` | camera, microphone and geolocation disabled |
+
+A handler may set its own value for any of these, and the default is only added when the header is absent.
+
+**The CSP is a rule for the frontend.** There must be no inline `<script>`, inline event handlers (`onclick="..."`), `<style>` blocks or `style="..."` attributes. JavaScript and CSS live in separate files under `public/`, and event handlers are attached with `addEventListener`.
+
+`Content-Length`, `Connection`, `Date` and `Server` are generated by the serializer, and handlers cannot override them. This prevents a handler bug from producing a response with wrong framing.
+
+HSTS is deliberately not sent yet. It will be added once the site has its own domain and TLS.
+
+### 4.4 Logging
+
+- **Two streams:** access lines on stdout, diagnostics on stderr, so they can be redirected separately.
+- **One `write()` per line.** Lines from different child processes never interleave.
+- **The logger replaces control characters** in every message and saves and restores `errno`, so logging never disturbs error handling.
+- **Access-log fields are cleaned:** quotes, backslashes and control characters become `_`, and long values are truncated, so a crafted path or `User-Agent` cannot break the format or forge a line.
+- **Never logged:** request bodies, `Cookie`, `Authorization`, `Referer`.
+- **Client address:** the peer address, or `CF-Connecting-IP` only when `trust_proxy` is on, the peer is loopback **and** the value is a valid IPv4 or IPv6 address. Otherwise a forged header cannot change the logged address.
+- **Privacy:** access logs contain client IP addresses. Keep them private and rotate or delete them accordingly.
+
+### 4.5 Resource exhaustion
+
+- **Connection cap.** At `max_children` the parent stops accepting. New clients wait in the kernel backlog, and the server does not fork without bound. The parent wakes on `SIGCHLD` (using `sigsuspend` with the signals blocked around the check, so there is no lost-wakeup race) and on shutdown signals.
+- **Deadlines instead of `alarm()`.** Each connection has an absolute deadline: a short idle deadline while waiting for a request, then a request deadline once the first byte arrives. Each `read` and `write` sets its socket timeout to the time remaining. A client that sends one byte at a time is cut off at the request deadline regardless of how slowly it sends. The same mechanism works in the serial model, where a process-wide `alarm()` would kill the server.
+- **Per-child limits** (address space, CPU time, file descriptors) bound the damage one connection can do. An allocation failure under the memory limit becomes a 500 response, and the child survives.
+- **Predictable memory per request:** the request object is a fixed size (about 31 KB) and a body buffer is allocated only after its declared size passes the limit.
+
+### 4.6 Process lifecycle
+
+- **Signal handlers only set a flag.** No logging or other non-async-signal-safe work happens inside a handler.
+- **Graceful shutdown.** On `SIGINT` or `SIGTERM` the parent stops accepting, signals its children, and waits for the grace period. Idle keep-alive children leave promptly, and in-flight responses complete and are sent with `Connection: close`. Anything still running after the grace period receives `SIGKILL`.
+- **Children are tracked in a PID table**, so shutdown signals reach exactly the server's own children and not the whole process group.
+- **Zombie reaping** happens in the `SIGCHLD` handler. Children that die from a signal are recorded and reported by the parent.
+- **Descriptor hygiene.** The parent closes each client socket right after `fork()`, the child closes the listener, and accepted sockets use `SOCK_CLOEXEC`.
+
+---
+
+## 5. Verification
+
+Everything below passes at `v0.5-server-complete`.
+
+### 5.1 Unit tests (`make test`)
+
+Parser, response builder, router, configuration loader and logger, built with `-Wall -Wextra` and run under AddressSanitizer and UndefinedBehaviorSanitizer (`make test SAN=1`). The logger tests include message lengths on both sides of the buffer boundary.
+
+### 5.2 Attack suite (`tests/integration/test_attacks.sh`)
+
+Raw-socket requests (so no client normalizes or rejects them first) against a server started with an isolated document root. Categories covered:
+
+| Category | Cases |
+|---|---|
+| Malformed requests | garbage request line, unknown method, HTTP/2.0, missing `Host` on 1.1 (and the allowed 1.0 case), absolute-form target, `OPTIONS *`, tab in path, 2000-character path, 5000 bytes with no CRLF |
+| Header abuse | NUL in a header name, space in a header name, DEL in a value, 600-byte value, 5000-byte line, 60 headers, total header bytes over 16 KiB |
+| Bodies and framing | conflicting `Content-Length`, non-numeric, negative, 2 MB, overflow-sized, chunked, `Content-Length` plus `Transfer-Encoding`, small body consumed, pipelined requests, close after a parse error |
+| Path traversal | `/../../../etc/passwd`, encoded dots, encoded slashes and backslashes, `//etc/passwd`, `/./../`, a dotfile, a symlink to `/etc/passwd`, `%00` truncation. Each must return 400 or 404 and never any outside content. |
+| Response hygiene | security headers present on error responses, no header injection through an encoded CRLF in the path |
+| Log hygiene | no forged log line through an encoded newline, quotes in `User-Agent` neutralized, forwarded IP ignored with `trust_proxy` off, and with it on a valid address is used while invalid values (`999.1.1.1`, `<script>`) are ignored |
+
+### 5.3 Limits suite (`tests/integration/test_limits.sh`)
+
+Runs with short timeouts so it finishes in about a minute:
+
+| Category | Cases |
+|---|---|
+| Connection cap | 14 idle connections against a cap of 8: children never exceed the cap, a queued client is served once idle children expire, the server survives |
+| Timeouts | an idle connection closes silently with no response and no access-log line; a half-sent request gets 408 within its deadline; a slowloris client is cut off with 408 long before it finishes |
+| Keep-alive rules | the connection closes after `max_requests_per_conn`, the last response announces `Connection: close`, a routed 404 keeps the connection open |
+| Leaks | the parent's descriptor count is unchanged after 300 requests and there are no zombie children |
+| Crash reporting | a child killed by a signal is reported in the error log and the server keeps running |
+| Shutdown | clean exit with idle connections open, shutdown is not delayed by idle connections, an immediate restart binds the port, an in-flight 6 MB download completes during shutdown, stragglers are killed after the grace period and logged |
+
+### 5.4 Fuzzing (`make fuzz`)
+
+- **Target:** `http_parse`, through `tests/fuzz/fuzz_parser.c`.
+- **Properties checked on every input:**
+  1. no memory or undefined-behavior errors (ASan and UBSan, with `-fno-sanitize-recover=undefined`);
+  2. **split-invariance:** parsing the bytes in one call gives exactly the same result as feeding them in small pieces, the way the connection handler does;
+  3. **structural invariants:** strings terminated and within bounds, no control characters in the parsed path, query or headers, a completed request is fully formed, and every error status is one the server knows how to answer.
+- **Corpus:** ten seed requests (plain, with query, with body, pipelined, duplicate `Content-Length`, chunked, malformed) plus a token dictionary for the coverage-guided runner.
+- **Result:** 2,000,000 mutated inputs (seed `1792269555`), **no crashes and no failed checks**.
+- **Limits of this result:** the gcc driver is a mutation fuzzer and is not coverage-guided. A longer coverage-guided run (`make fuzz-clang`) is recommended before relying on the parser against hostile traffic for a long time. Only the parser is fuzzed so far.
+
+### 5.5 Deployment test
+
+The server was run behind a Cloudflare quick tunnel on Ubuntu, and was reached from outside the home network with no errors. With `trust_proxy` on, the access log recorded real client addresses.
+
+### 5.6 Performance baseline
+
+Behavior under normal load and at saturation (200 connections against a cap of 64) is recorded in `docs/benchmarks.md`, to compare against the later models.
+
+### 5.7 Reproducing everything
+
+```bash
+make clean && make test SAN=1        # unit tests under sanitizers, then both integration suites
+make fuzz ITER=2000000               # gcc mutation fuzzer (replay a crash: ./build/fuzz_driver fuzz-crash.bin)
+make fuzz-clang SECS=600             # optional: coverage-guided run (needs clang)
+```
+
+Run attack scripts, fuzzers and load tests against `127.0.0.1` only, never through a public tunnel URL.
+
+---
+
+## 6. Known limitations
+
+These are deliberate omissions or accepted trade-offs, not forgotten items.
+
+| Limitation | Notes |
+|---|---|
+| No TLS | Cloudflare terminates TLS for tunnel deployments. Own TLS is planned. |
+| Chunked request bodies unsupported | Answered with 501. |
+| Static files are read fully into memory | 8 MiB cap per file. Streaming comes with the event-loop version. |
+| No per-IP connection or rate limits | Under fork, counters in memory are not shared between children. The tunnel provides this protection today. Future write endpoints must rate-limit through the database. |
+| At the connection cap, new clients wait in the kernel backlog | They are not told "503". Long waits are visible in the saturation benchmark. |
+| The response write budget is the whole `request_timeout_sec` | A slow but legitimate client downloading a large file can be cut off. A per-progress write timeout is the better design and a planned improvement. |
+| All dotfiles are hidden | This includes `/.well-known/`, which will need an explicit exception if certificate validation or similar ever requires it. |
+| Request body is allocated when the headers finish | Bounded by the body limit and the child cap here. It must become incremental in the epoll version, where one process holds thousands of connections. |
+| No HTTP/2, no compression | |
+| Logs are not rotated | Redirect to a file and rotate externally. |
+| Configuration values cannot contain `#` | Everything after it is treated as a comment. |
+| Quick tunnel URLs are temporary | A stable address needs a named tunnel and a domain. |
+| Only the parser is fuzzed | The URL decoder, the header-token helper and the configuration loader are good next targets. |
+
+---
+
+## 7. Operational checklist
+
+Before exposing the server:
+
+- [ ] Release build (not the sanitizer build): `make clean && make`
+- [ ] `bind_addr = 127.0.0.1`, and `trust_proxy = on` only when running behind `cloudflared`
+- [ ] Running as a normal user, never root
+- [ ] The document root contains only files meant to be public (no backups such as `*~`, `*.bak`, `*.swp`; no symlinks; no test files)
+- [ ] Demo routes removed or consciously accepted
+- [ ] No write endpoints enabled until the database layer has been reviewed
+- [ ] Logs are private, and the error log is read after every public session
+- [ ] `make test SAN=1` is green on the exact commit being deployed
+
+---
+
+## 8. Planned security work
+
+| Phase | Item |
+|---|---|
+| A6, database | SQLite with prepared statements only (no string-built SQL); one connection per child, opened after `fork()`; schema in migrations; least-privilege file permissions on the database |
+| A7, API | Input validation on every endpoint; JSON output built through an escaping writer; request size limits per endpoint; rate limiting through the database |
+| Accounts | Password hashing with PBKDF2 from OpenSSL (no hand-written crypto); random session identifiers; cookies with `HttpOnly`, `Secure` and `SameSite`; CSRF protection on state-changing requests; flags hashed before storing |
+| Frontend | Escape all user-supplied content in the browser (`textContent`, never `innerHTML`), and keep the strict CSP |
+| TLS | OpenSSL inside `net/conn.c` only; blocking TLS on the fork version first, then non-blocking TLS in the epoll loop; HSTS once a domain exists |
+| epoll version | Incremental body buffers, timer-based deadlines, bounded per-connection memory, and a worker pool for blocking database calls |
+| Testing | Fuzz the URL decoder and configuration loader; run the coverage-guided fuzzer for longer; add a TLS handshake test suite |
