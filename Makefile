@@ -8,6 +8,14 @@ ifeq ($(SAN), 1)
 endif
 export CFLAGS # Export so bash scripts can inherit it
 
+# --- NEW: SQLite Vendoring & Libraries ---
+SQLITE_FLAGS := -O2 -DSQLITE_THREADSAFE=1 -DSQLITE_DQS=0 -DSQLITE_DEFAULT_FOREIGN_KEYS=1 \
+                -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_OMIT_DEPRECATED -DSQLITE_DEFAULT_MEMSTATUS=0
+
+CFLAGS += -Ithird_party/sqlite
+LDLIBS := -lcrypto -lpthread -lm
+# -----------------------------------------
+
 # Default concurrency model (can be overridden via command line)
 CONCURRENCY ?= fork
 
@@ -31,12 +39,20 @@ SRCS = $(BASE_SRCS) $(SRC_DIR)/concurrency/$(CONCURRENCY)_model.c
 # Convert src/path/to/file.c to build/path/to/file.o
 OBJS = $(SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 
+# --- NEW: Add the compiled sqlite object to our OBJS list ---
+OBJS += $(BUILD_DIR)/obj/sqlite3.o
+
 # Default target runs when you just type 'make'
 all: $(TARGET)
 
-# Link all object files into the final executable
+# --- NEW: Standalone compilation rule for the massive SQLite file ---
+$(BUILD_DIR)/obj/sqlite3.o: third_party/sqlite/sqlite3.c
+	@mkdir -p $(dir $@)
+	$(CC) $(SQLITE_FLAGS) -w -c $< -o $@
+
+# Link all object files into the final executable (Added $(LDLIBS) here)
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 # Compile each .c file into a .o file
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
@@ -67,11 +83,9 @@ fuzz-clang:
 .PHONY: fuzz fuzz-clang
 
 # tests
-
 test: all
 	@echo "=== RUNNING UNIT TESTS ==="
 	@bash scripts/run_unit_tests.sh
 	@echo "\n=== RUNNING INTEGRATION TESTS ==="
 	@bash tests/integration/run_all.sh
-
 .PHONY: test
