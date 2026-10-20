@@ -7,10 +7,7 @@
 
 #define CRLF_LEN 2
 
-
-
 // Helper Functions
-
 
 // carriage read line feeed(\r\n) finder
 static const char *find_crlf(const char *buf, size_t len){
