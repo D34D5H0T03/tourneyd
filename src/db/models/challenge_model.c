@@ -1,4 +1,5 @@
 #include "db/models/challenge_model.h"
+#include "db/models/model_util.h"
 #include "db/db.h"
 #include "util/log.h"
 #include "sqlite3.h"
@@ -6,26 +7,15 @@
 #include <string.h>
 #include <stdio.h>
 
-// copies text from source to dst 
-static void copy_text(char *dst, size_t cap, const unsigned char *src)
-{
-    // treat NULL as ""
-    snprintf(dst, cap, "%s", src ? (const char *)src : "");
-}
-
 // returns a list of challange summary for browsing page
-int challenge_list(const char *event_slug, challenge_summary_t *out, int max, int *count)
+int challenge_list(const char *event_slug, int include_unpublished, challenge_summary_t *out, int max, int *count)
 {
-    // guard clauses
-    if (!count) {
-        return DB_ERROR;
-    }
     // initialize out as 0
     *count = 0;
 
-    if (!event_slug || max < 0 || (max > 0 && !out)) {
-        return DB_ERROR;
-    }
+    // guard clauses and limit capping
+    if (max > CHALLENGE_LIST_MAX) max = CHALLENGE_LIST_MAX;
+    if (max < 1) return DB_OK;
 
     // get db handle
     sqlite3 *db = db_get();
@@ -33,34 +23,38 @@ int challenge_list(const char *event_slug, challenge_summary_t *out, int max, in
         return DB_ERROR;
 
     // query using prepared statements for event slug and limit
-    static const char SQL[] =
-        "SELECT c.slug, c.title, c.category, c.points "
+    // updated to include published column and conditional filtering
+    sqlite3_stmt *st = model_prepare(db,
+        "SELECT c.slug, c.title, c.category, c.points, c.published "
         "FROM challenges c JOIN events e ON e.id = c.event_id "
-        "WHERE e.slug = ?1 AND c.published = 1 "
-        "ORDER BY c.points ASC, c.id ASC LIMIT ?2";
+        "WHERE e.slug = ?1 AND (c.published = 1 OR ?2) "
+        "ORDER BY c.points, c.slug LIMIT ?3");
+    if (!st) return DB_ERROR;
 
-    // start of prepared statement
-    sqlite3_stmt *st = NULL;
-    if (sqlite3_prepare_v2(db, SQL, -1, &st, NULL) != SQLITE_OK)
-        return DB_ERROR;
-
-    // bind the text and int inputs to the query as 1 and 2
-    // may need error handling here
+    // bind the text and int inputs to the query as 1, 2 and 3
     sqlite3_bind_text(st, 1, event_slug, -1, SQLITE_STATIC);
-    sqlite3_bind_int(st, 2, max);
+    sqlite3_bind_int(st, 2, include_unpublished ? 1 : 0);
+    sqlite3_bind_int(st, 3, max);
 
     // execute statements and return the rows
-    int n = 0;
-    while (sqlite3_step(st) == SQLITE_ROW && n < max)
+    int n = 0, rc = SQLITE_ROW;
+    while (n < max && (rc = sqlite3_step(st)) == SQLITE_ROW)
     {
-        // copy the 4 columns
-        copy_text(out[n].slug, sizeof out[n].slug, sqlite3_column_text(st, 0));
-        copy_text(out[n].title, sizeof out[n].title, sqlite3_column_text(st, 1));
-        copy_text(out[n].category, sizeof out[n].category, sqlite3_column_text(st, 2));
+        // copy the 5 columns using model_util helper
+        model_copy_text(out[n].slug, sizeof out[n].slug, sqlite3_column_text(st, 0));
+        model_copy_text(out[n].title, sizeof out[n].title, sqlite3_column_text(st, 1));
+        model_copy_text(out[n].category, sizeof out[n].category, sqlite3_column_text(st, 2));
         out[n].points = sqlite3_column_int(st, 3);
+        out[n].published = sqlite3_column_int(st, 4);
         n++;
     }
+    
+    int failed = rc != SQLITE_ROW && rc != SQLITE_DONE;
+    if (failed) log_error("db: list challenges: %s", sqlite3_errmsg(db));
+    
     sqlite3_finalize(st);
+    if (failed) return DB_ERROR;
+    
     *count = n;
     return DB_OK;
 }
@@ -82,13 +76,9 @@ int challenge_get(const char *event_slug, const char *slug, challenge_t *out)
         "FROM challenges c JOIN events e ON e.id = c.event_id "
         "WHERE e.slug = ?1 AND c.slug = ?2 AND c.published = 1";
 
-    // prepare and check error
-    sqlite3_stmt *st = NULL;
-    if (sqlite3_prepare_v2(db, SQL, -1, &st, NULL) != SQLITE_OK)
-    {
-        log_error("db: prepare: %s", sqlite3_errmsg(db));
-        return DB_ERROR;
-    }
+    // prepare using model_util helper
+    sqlite3_stmt *st = model_prepare(db, SQL);
+    if (!st) return DB_ERROR;
 
     // pass the parameters
     sqlite3_bind_text(st, 1, event_slug, -1, SQLITE_STATIC); 
@@ -108,25 +98,19 @@ int challenge_get(const char *event_slug, const char *slug, challenge_t *out)
         return DB_ERROR; /* includes SQLITE_BUSY */
     }
 
-    // copy the summary columns to outpur
-    copy_text(out->s.slug, sizeof out->s.slug, sqlite3_column_text(st, 0));
-    copy_text(out->s.title, sizeof out->s.title, sqlite3_column_text(st, 1));
-    copy_text(out->s.category, sizeof out->s.category, sqlite3_column_text(st, 2));
+    // copy the summary columns to output using model_util helper
+    model_copy_text(out->s.slug, sizeof out->s.slug, sqlite3_column_text(st, 0));
+    model_copy_text(out->s.title, sizeof out->s.title, sqlite3_column_text(st, 1));
+    model_copy_text(out->s.category, sizeof out->s.category, sqlite3_column_text(st, 2));
     out->s.points = sqlite3_column_int(st, 3);
 
-    // dynamically allocate memory for the description
-    const unsigned char *d = sqlite3_column_text(st, 4); /* valid only until the next step/finalize */
-    int dlen = sqlite3_column_bytes(st, 4);
-    out->description = malloc((size_t)dlen + 1);
+    // dynamically allocate memory for the description using model_util helper
+    out->description = model_dup_text(st, 4, NULL);
     if (!out->description)
     { // malloc fail
         sqlite3_finalize(st);
         return DB_ERROR;
     }
-    // copy the description to the buffer
-    if (dlen > 0)
-        memcpy(out->description, d, (size_t)dlen);
-    out->description[dlen] = '\0'; // append null byte
 
     // finalize and return
     sqlite3_finalize(st);
@@ -157,9 +141,8 @@ int challenge_check_flag(const char *event_slug, const char *slug, const char *f
         "WHERE e.slug = ?1 AND c.slug = ?2 AND c.published = 1";
 
     // prepare the statement and bind the parameters
-    sqlite3_stmt *st = NULL;
-    if (sqlite3_prepare_v2(db, LOOKUP, -1, &st, NULL) != SQLITE_OK)
-        return DB_ERROR;
+    sqlite3_stmt *st = model_prepare(db, LOOKUP);
+    if (!st) return DB_ERROR;
     sqlite3_bind_text(st, 1, event_slug, -1, SQLITE_STATIC);
     sqlite3_bind_text(st, 2, slug, -1, SQLITE_STATIC);
 
@@ -175,6 +158,7 @@ int challenge_check_flag(const char *event_slug, const char *slug, const char *f
         sqlite3_finalize(st);
         return DB_ERROR;
     }
+    
     // signed 8 byte int
     int64_t id = sqlite3_column_int64(st, 0); // id as signed 64 bit int for sqlite INTEGER
     int salt_len = sqlite3_column_bytes(st, 1); 
@@ -189,6 +173,7 @@ int challenge_check_flag(const char *event_slug, const char *slug, const char *f
         sqlite3_finalize(st); 
         return DB_ERROR;
     }
+    
     // copy the salt and hash bytes
     memcpy(salt, sqlite3_column_blob(st, 1), FLAG_SALT_LEN);
     memcpy(want, sqlite3_column_blob(st, 2), FLAG_HASH_LEN);
@@ -205,9 +190,9 @@ int challenge_check_flag(const char *event_slug, const char *slug, const char *f
     *correct = flag_hash_equal(want, got); // compares the hashes
 
     // prepare logging statement
-    static const char LOG[] = "INSERT INTO submissions (challenge_id, correct) VALUES (?1, ?2)";
-    if (sqlite3_prepare_v2(db, LOG, -1, &st, NULL) != SQLITE_OK)
-        return DB_ERROR;
+    st = model_prepare(db, "INSERT INTO submissions (challenge_id, correct) VALUES (?1, ?2)");
+    if (!st) return DB_ERROR;
+    
     // bind params
     sqlite3_bind_int64(st, 1, id);
     sqlite3_bind_int(st, 2, *correct);
@@ -235,10 +220,9 @@ int challenge_create(const challenge_new_t *in)
         "INSERT INTO challenges (event_id, slug, title, category, points, description, flag_salt, flag_hash) "
         "SELECT id, ?2, ?3, ?4, ?5, ?6, ?7, ?8 FROM events WHERE slug = ?1";
 
-    // prepare statement
-    sqlite3_stmt *st = NULL;
-    if (sqlite3_prepare_v2(db, SQL, -1, &st, NULL) != SQLITE_OK)
-        return DB_ERROR;
+    // prepare statement using model_util helper
+    sqlite3_stmt *st = model_prepare(db, SQL);
+    if (!st) return DB_ERROR;
 
     // bind text
     sqlite3_bind_text(st, 1, in->event_slug, -1, SQLITE_STATIC);
@@ -250,18 +234,48 @@ int challenge_create(const challenge_new_t *in)
     sqlite3_bind_blob(st, 7, salt, FLAG_SALT_LEN, SQLITE_STATIC);
     sqlite3_bind_blob(st, 8, hash, FLAG_HASH_LEN, SQLITE_STATIC);
 
-    // execute and get error data
-    int rc = sqlite3_step(st);
-    int ec = sqlite3_extended_errcode(db);
+    // execute and get error data using model_step_write helper
+    int rc = model_step_write(db, st, "create challenge");
     int changes = sqlite3_changes(db);
-
-    // error
-    if (rc != SQLITE_DONE)
-        log_error("db: create challenge: %s", sqlite3_errmsg(db));
     sqlite3_finalize(st);
-
+    
     // return
-    if (rc == SQLITE_DONE)
-        return changes == 1 ? DB_OK : DB_NOT_FOUND; /* 0 rows = unknown event */
-    return ec == SQLITE_CONSTRAINT_UNIQUE ? DB_CONFLICT : DB_ERROR;
+    if (rc == DB_OK && changes == 0) return DB_NOT_FOUND; /* the SELECT matched no event */
+    return rc;
+}
+
+// tourneyctl helpers
+
+// helper to execute an update or delete by slug
+static int challenge_write(const char *sql, const char *event_slug, const char *slug, int flag) {
+    sqlite3 *db = db_get();
+    if (!db) return DB_ERROR;
+    
+    sqlite3_stmt *st = model_prepare(db, sql);
+    if (!st) return DB_ERROR;
+    
+    sqlite3_bind_text(st, 1, event_slug, -1, SQLITE_STATIC);
+    sqlite3_bind_text(st, 2, slug, -1, SQLITE_STATIC);
+    if (flag >= 0) sqlite3_bind_int(st, 3, flag);
+    
+    int rc = model_step_write(db, st, "challenge update");
+    int changed = sqlite3_changes(db);
+    sqlite3_finalize(st);
+    
+    return (rc == DB_OK && changed == 0) ? DB_NOT_FOUND : rc;
+}
+
+// publish or hide a challenge
+int challenge_set_published(const char *event_slug, const char *slug, int published) {
+    return challenge_write(
+        "UPDATE challenges SET published = ?3, updated_at = unixepoch() "
+        "WHERE slug = ?2 AND event_id = (SELECT id FROM events WHERE slug = ?1)",
+        event_slug, slug, published ? 1 : 0);
+}
+
+// delete a challenge (cascades to its submissions)
+int challenge_delete(const char *event_slug, const char *slug) {
+    return challenge_write(
+        "DELETE FROM challenges WHERE slug = ?2 AND event_id = (SELECT id FROM events WHERE slug = ?1)",
+        event_slug, slug, -1);
 }

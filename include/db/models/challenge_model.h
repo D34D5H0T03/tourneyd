@@ -3,40 +3,49 @@
 
 #include <stdint.h>
 #include "util/hash.h"
+#include "util/slug.h" 
 
-#define SLUG_MAX 64
-#define CHALLENGE_LIST_MAX 200
-#define MAX_TITLE_LEN 201
-#define MAX_CATEGORY_LEN 33
+#define CHALLENGE_LIST_MAX  200
+#define CHALLENGE_FLAG_MAX  256
+#define CHALLENGE_DESC_MAX  (64 * 1024)
 
-// the details of a challenge
 typedef struct { 
     char slug[SLUG_MAX + 1]; 
-    char title[MAX_TITLE_LEN]; 
-    char category[MAX_CATEGORY_LEN]; 
+    char title[201]; 
+    char category[33]; 
     int points; 
+    int published; 
 } challenge_summary_t;
 
-// the core challenge struct
 typedef struct { 
     challenge_summary_t s; 
     char *description; /* malloc'd */
 } challenge_t;    
 
-// new challenge
 typedef struct {
     const char *event_slug, *slug, *title, *category, *description, *flag;
     int points;
 } challenge_new_t;
 
-int challenge_list(const char *event_slug, challenge_summary_t *out, int max, int *count);
+// returns a list of challange summary for browsing page (now supports admin include_unpublished flag)
+int challenge_list(const char *event_slug, int include_unpublished, challenge_summary_t *out, int max, int *count);
+
+// returns a specific challenge for the description page
 int challenge_get(const char *event_slug, const char *slug, challenge_t *out);
+
+// challenge description cleanup
 void challenge_free(challenge_t *c);
 
-/* Records the attempt. Returns DB_OK (correct set), DB_NOT_FOUND, DB_RATE_LIMITED, or DB_ERROR. */
+// check the flag from submission
 int challenge_check_flag(const char *event_slug, const char *slug, const char *flag, int *correct);
 
-/* Used by tourneyctl: hashes the flag and inserts. DB_OK, DB_NOT_FOUND (unknown event), DB_CONFLICT. */
+// creates new challenfe and inserts it into the db
 int challenge_create(const challenge_new_t *in);
+
+// publish or hide a challenge (used by tourneyctl)
+int challenge_set_published(const char *event_slug, const char *slug, int published);
+
+// delete a challenge entirely (used by tourneyctl)
+int challenge_delete(const char *event_slug, const char *slug);
 
 #endif
