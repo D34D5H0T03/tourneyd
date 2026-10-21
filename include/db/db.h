@@ -7,6 +7,7 @@ struct sqlite3; // handlers never see the full type
 #define DB_NOT_FOUND     1
 #define DB_CONFLICT      2
 #define DB_RATE_LIMITED  3
+#define DB_INVALID       4 // a value broke a check / not null / foreign key constraint
 #define DB_ERROR        (-1)
 
 /* Parent process, before any fork or thread: stores settings, opens connection,
