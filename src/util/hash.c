@@ -4,6 +4,7 @@
 #include <openssl/rand.h>
 #include <string.h>
 
+// this is for checking flags with the stored salt
 int flag_hash_with_salt(const char *flag, const uint8_t salt[FLAG_SALT_LEN], uint8_t out[FLAG_HASH_LEN]) {
     EVP_MD_CTX *ctx = EVP_MD_CTX_new(); // message digest context
     if (!ctx) return -1;
@@ -19,11 +20,13 @@ int flag_hash_with_salt(const char *flag, const uint8_t salt[FLAG_SALT_LEN], uin
     return ok ? 0 : -1;
 }
 
+// this is for new challenges
 int flag_hash_new(const char *flag, uint8_t salt[FLAG_SALT_LEN], uint8_t out[FLAG_HASH_LEN]) {
     if (RAND_bytes(salt, FLAG_SALT_LEN) != 1) return -1; // secure random bytes for salts
     return flag_hash_with_salt(flag, salt, out);
 }
 
+// this is for checking the submitted flag
 int flag_hash_equal(const uint8_t a[FLAG_HASH_LEN], const uint8_t b[FLAG_HASH_LEN]) {
     // Constant-time comparison to prevent cryptographic timing attacks
     return CRYPTO_memcmp(a, b, FLAG_HASH_LEN) == 0;
