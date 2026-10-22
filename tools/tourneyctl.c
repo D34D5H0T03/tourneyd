@@ -508,18 +508,18 @@ static int cmd_writeup_put(const opts_t *o){
 
 static int cmd_writeup_list(const opts_t *o)
 {
-    (void)o;
-    writeup_summary_t *rows = malloc(sizeof *rows * WRITEUP_LIST_MAX);
-    if (!rows)
+    (void)o; // no use, discard
+    writeup_summary_t *rows = malloc(sizeof *rows * WRITEUP_LIST_MAX); // row x max row size
+    if (!rows) // malloc fail
         return 1;
     int n = 0, total = 0;
-    int rc = writeup_list(0, 1, rows, WRITEUP_LIST_MAX, &n, &total);
+    int rc = writeup_list(0, 1, rows, WRITEUP_LIST_MAX, &n, &total); // get list
     if (rc == DB_OK)
-    {
+    { // print if success
         printf("%-4s %-10s %-28s %-16s %s\n", "pub", "date", "slug", "author", "title");
         for (int i = 0; i < n; i++)
         {
-            char date[16];
+            char date[16]; // convert unixtime to yyyy-mm-dd format
             time_t t = (time_t)rows[i].created_at;
             struct tm tm;
             gmtime_r(&t, &tm);
@@ -529,42 +529,58 @@ static int cmd_writeup_list(const opts_t *o)
         }
         printf("%d of %d writeup(s)\n", n, total);
     }
-    free(rows);
+    free(rows); // clean and retrun
     return report(rc, "writeup list");
 }
 
 static int writeup_publish(const opts_t *o, int published)
 {
-    if (require_slug(o) < 0)
-        return EXIT_USAGE;
+    // check slug
+    if (require_slug(o) < 0) return EXIT_USAGE;
+        
+    //update publish status and report
     int code = report(writeup_set_published(o->slug, published), "writeup update");
-    if (code == 0)
+
+    if (code == 0) // success and return
         printf("%s %s\n", published ? "published" : "hid", o->slug);
+
     return code;
 }
-static int cmd_writeup_hide(const opts_t *o) { return writeup_publish(o, 0); }
-static int cmd_writeup_show(const opts_t *o) { return writeup_publish(o, 1); }
+
+// hide = 0, show = 1
+static int cmd_writeup_hide(const opts_t *o){ 
+    return writeup_publish(o, 0); 
+}
+static int cmd_writeup_show(const opts_t *o){ 
+    return writeup_publish(o, 1); 
+}
 
 static int cmd_writeup_delete(const opts_t *o)
 {
-    if (require_slug(o) < 0)
-        return EXIT_USAGE;
-    if (need_yes(o, "deleting a writeup") < 0)
-        return EXIT_USAGE;
+    // check slug
+    if (require_slug(o) < 0) return EXIT_USAGE;
+    
+    // check if yes provided
+    if (need_yes(o, "deleting a writeup") < 0) return EXIT_USAGE;
+    
+    // delete and report
     int code = report(writeup_delete(o->slug), "writeup delete");
+
+    // success and return
     if (code == 0)
         printf("deleted %s\n", o->slug);
     return code;
 }
 
-/* ---------- dispatch ---------- */
+// the commands
 
 typedef struct
 {
-    const char *group, *name;
-    int (*fn)(const opts_t *);
+    const char *group, *name; // command identity
+    int (*fn)(const opts_t *); // the function pointer for operations
 } command_t;
 
+// defined commands
 static const command_t COMMANDS[] = {
     {"challenge", "add", cmd_challenge_add},
     {"challenge", "list", cmd_challenge_list},
@@ -579,8 +595,12 @@ static const command_t COMMANDS[] = {
     {"writeup", "delete", cmd_writeup_delete},
 };
 
+// main function
 int main(int argc, char **argv)
 {
+    // recognize the config path to know which db to connect to (if user provides a different db)
+    // example: ./tourneyctl -c config/server.conf
+    // here, ./tourneyctl is arg[0], -c is arg[1] and config/server.conf is arg[2]
     int i = 1;
     const char *config_path = NULL;
     if (i + 1 < argc && strcmp(argv[i], "-c") == 0)
@@ -589,23 +609,26 @@ int main(int argc, char **argv)
         i += 2;
     }
 
+    // user provided no args, print usage
     if (i >= argc)
     {
         usage(stderr);
         return EXIT_USAGE;
     }
+    // user for manual
     if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help"))
     {
         usage(stdout);
         return 0;
     }
 
+    // migrate command
     int is_migrate = strcmp(argv[i], "migrate") == 0;
     const command_t *cmd = NULL;
     opts_t o;
     if (is_migrate)
     {
-        if (i + 1 != argc)
+        if (i + 1 != argc) // migrate command cannot have args
         {
             usage(stderr);
             return EXIT_USAGE;
@@ -615,9 +638,10 @@ int main(int argc, char **argv)
     {
         if (i + 1 >= argc)
         {
-            usage(stderr);
+            usage(stderr); // command had no args
             return EXIT_USAGE;
         }
+        // iterate through commands and find the appropiate command
         for (size_t k = 0; k < sizeof COMMANDS / sizeof COMMANDS[0]; k++)
             if (!strcmp(COMMANDS[k].group, argv[i]) && !strcmp(COMMANDS[k].name, argv[i + 1]))
                 cmd = &COMMANDS[k];
@@ -627,34 +651,46 @@ int main(int argc, char **argv)
             usage(stderr);
             return EXIT_USAGE;
         }
+        // parse options. argc - (i + 1) shortens the total arg size
+        // argv + (i + 1) shifts the pointer to the first options liek --title
+        // the optind is set to 1
         if (parse_opts(argc - (i + 1), argv + (i + 1), &o) < 0)
             return EXIT_USAGE;
     }
 
+    // load config with defaults
     config_t cfg;
     config_defaults(&cfg);
+    // load the provided file
     if (config_path)
     {
         if (config_load_file(&cfg, config_path) < 0)
             return 1;
     }
-    else if (access(DEFAULT_CONFIG, R_OK) == 0)
+
+    else if (access(DEFAULT_CONFIG, R_OK) == 0) // check if default config file is accessible
     {
         if (config_load_file(&cfg, DEFAULT_CONFIG) < 0)
             return 1;
     }
+    // validate the config
     if (config_validate(&cfg) < 0)
         return 1;
+    
 
+    /* If new db path and migration is provided, this opens the db connection and runs
+     * the migrations provided in the config files*/
     if (db_init(cfg.db_path, cfg.migrations_dir, cfg.db_busy_timeout_ms) != DB_OK)
     {
         fprintf(stderr, "error: cannot open or migrate the database\n");
         return 1;
     }
+    // if is migrate then show this message
     if (is_migrate)
     {
         puts("database is up to date");
         return 0;
     }
+    // execute the given command otherwise and return from there
     return cmd->fn(&o);
 }
