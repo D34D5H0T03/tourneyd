@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Target Detail | tourneyd</title>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/common.js" defer></script>
+    <script src="/js/challenge.js" defer></script>
+</head>
+<body>
+    <aside class="sidebar">
+        <div>
+            <a href="/" class="brand">tourneyd</a>
+            <div class="sidebar-label">// Navigation</div>
+            <nav class="nav-links">
+                <a href="/event/ctf/challenges.html" class="nav-item"><span>&larr; Back to Targets</span></a>
+            </nav>
+        </div>
+        <div class="sys-status">
+            [MODE] ACTIVE_TARGET<br>
+            [STATUS] AWAITING_FLAG
+        </div>
+    </aside>
+    <main class="content">
+        <h1 id="title">Loading Target...</h1>
+        <div class="archive-header">
+            <span id="meta-category" class="badge"></span>
+            <span id="meta-points"></span>
+        </div>
+        
+        <pre id="description" class="prose terminal-block" style="white-space: pre-wrap; margin-top: 1rem; border-left-color: var(--fg-muted);"></pre>
+
+        <form id="flag-form" style="margin-top: 2rem; display: none;">
+            <div style="display: flex; gap: 1rem; max-width: 600px;">
+                <input id="flag" type="text" maxlength="256" autocomplete="off" spellcheck="false" placeholder="tourney{...}" style="flex: 1; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--fg-base); padding: 0.85rem; font-family: var(--font-mono);">
+                <button id="submit" type="submit" class="filter-btn" style="width: auto; background: var(--accent); color: var(--bg-base); border-color: var(--accent); font-weight: 600;">SUBMIT_FLAG</button>
+            </div>
+            <p id="result" style="font-family: var(--font-mono); font-size: 0.9rem; margin-top: 1rem;"></p>
+        </form>
+    </main>
+</body>
+</html>
