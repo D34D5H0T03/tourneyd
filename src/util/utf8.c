@@ -33,62 +33,62 @@
 #define SURROGATE_START         0xD800
 #define SURROGATE_END           0xDFFF
 
-int utf8_valid(const char *s, size_t n) {
-    const unsigned char *p = (const unsigned char *)s;
-    const unsigned char *end = p + n;
+/* Length (1-4) of the valid UTF-8 sequence at s, or 0 if the bytes are not valid UTF-8. */
+size_t utf8_seq_len(const char *s, size_t n) {
+    if (n == 0) return 0;
     
-    while (p < end) {
-        unsigned char c = *p;
-        
-        // ASCII Fast Path
-        if (c < ASCII_THRESHOLD) { 
-            p++; 
-            continue; 
-        }
-        
-        size_t need;
-        uint32_t cp;
-        uint32_t min;
-        
-        // Leading Byte Analysis
-        if ((c & MASK_2_BYTE) == PREFIX_2_BYTE) { 
-            need = 1; 
-            cp = c & PAYLOAD_2_BYTE; 
-            min = MIN_CP_2_BYTE; 
-        } 
-        else if ((c & MASK_3_BYTE) == PREFIX_3_BYTE) { 
-            need = 2; 
-            cp = c & PAYLOAD_3_BYTE; 
-            min = MIN_CP_3_BYTE; 
-        } 
-        else if ((c & MASK_4_BYTE) == PREFIX_4_BYTE) { 
-            need = 3; 
-            cp = c & PAYLOAD_4_BYTE; 
-            min = MIN_CP_4_BYTE; 
-        } 
-        else {
-            return 0; // Invalid leading byte
-        }
-        
-        // Truncation Check 
-        if ((size_t)(end - p) <= need) {
-            return 0; 
-        }
-        
-        // Continuation Validation & Payload Assembly
-        for (size_t i = 1; i <= need; i++) {
-            if ((p[i] & CONT_MASK) != CONT_PREFIX) {
-                return 0;
-            }
-            cp = (cp << SHIFT_BITS) | (p[i] & CONT_PAYLOAD);
-        }
-        
-        // Code Point Validation
-        if (cp < min || cp > MAX_VALID_CP || (cp >= SURROGATE_START && cp <= SURROGATE_END)) {
-            return 0;
-        }
-        
-        p += need + 1;
+    const unsigned char *p = (const unsigned char *)s;
+    unsigned char c = p[0];
+    
+    // ASCII Fast Path
+    if (c < ASCII_THRESHOLD) return 1;
+    
+    size_t need;
+    uint32_t cp;
+    uint32_t min;
+    
+    // Leading Byte Analysis
+    if ((c & MASK_2_BYTE) == PREFIX_2_BYTE) { 
+        need = 1; 
+        cp = c & PAYLOAD_2_BYTE; 
+        min = MIN_CP_2_BYTE; 
+    } 
+    else if ((c & MASK_3_BYTE) == PREFIX_3_BYTE) { 
+        need = 2; 
+        cp = c & PAYLOAD_3_BYTE; 
+        min = MIN_CP_3_BYTE; 
+    } 
+    else if ((c & MASK_4_BYTE) == PREFIX_4_BYTE) { 
+        need = 3; 
+        cp = c & PAYLOAD_4_BYTE; 
+        min = MIN_CP_4_BYTE; 
+    } 
+    else {
+        return 0; // Invalid leading byte
+    }
+    
+    // Truncation Check 
+    if (n <= need) return 0; 
+    
+    // Continuation Validation & Payload Assembly
+    for (size_t i = 1; i <= need; i++) {
+        if ((p[i] & CONT_MASK) != CONT_PREFIX) return 0;
+        cp = (cp << SHIFT_BITS) | (p[i] & CONT_PAYLOAD);
+    }
+    
+    // Code Point Validation
+    if (cp < min || cp > MAX_VALID_CP || (cp >= SURROGATE_START && cp <= SURROGATE_END)) {
+        return 0;
+    }
+    
+    return need + 1;
+}
+
+int utf8_valid(const char *s, size_t n) {
+    for (size_t i = 0; i < n; ) {
+        size_t k = utf8_seq_len(s + i, n - i);
+        if (k == 0) return 0;
+        i += k;
     }
     return 1;
 }
