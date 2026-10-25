@@ -30,14 +30,16 @@
             <span id="meta-points"></span>
         </div>
         
-        <pre id="description" class="prose terminal-block" style="white-space: pre-wrap; margin-top: 1rem; border-left-color: var(--fg-muted);"></pre>
+        <!-- Hero Text Box -->
+        <pre id="description" class="prose hero-text-box challenge-text"></pre>
 
-        <form id="flag-form" style="margin-top: 2rem; display: none;">
-            <div style="display: flex; gap: 1rem; max-width: 600px;">
-                <input id="flag" type="text" maxlength="256" autocomplete="off" spellcheck="false" placeholder="tourney{...}" style="flex: 1; background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--fg-base); padding: 0.85rem; font-family: var(--font-mono);">
-                <button id="submit" type="submit" class="filter-btn" style="width: auto; background: var(--accent); color: var(--bg-base); border-color: var(--accent); font-weight: 600;">SUBMIT_FLAG</button>
+        <!-- Flag Submission UI -->
+        <form id="flag-form" class="flag-form">
+            <div class="flag-input-group">
+                <input id="flag" type="text" class="flag-input" maxlength="256" autocomplete="off" spellcheck="false" placeholder="tourney{...}">
+                <button id="submit" type="submit" class="btn-submit">SUBMIT</button>
             </div>
-            <p id="result" style="font-family: var(--font-mono); font-size: 0.9rem; margin-top: 1rem;"></p>
+            <p id="result" class="result-msg"></p>
         </form>
     </main>
 </body>

@@ -1,59 +1,78 @@
 'use strict';
 (async function () {
-    const list = document.getElementById('challenge-list');
-    const filterBtns = document.querySelectorAll('.filter-btn');
+    // 1. Grab all the elements specific to challenge.html
+    const title = document.getElementById('title');
+    const metaCat = document.getElementById('meta-category');
+    const metaPts = document.getElementById('meta-points');
+    const description = document.getElementById('description');
+    const form = document.getElementById('flag-form');
+    const input = document.getElementById('flag');
+    const button = document.getElementById('submit');
+    const result = document.getElementById('result');
+
+    const slug = param('id'); 
     
-    let data;
+    if (!slug || !SLUG_RE.test(slug)) { 
+        title.textContent = 'Target Not Found'; 
+        return; 
+    }
+
+    let challenge;
     try {
-        data = await api('/api/challenges');
+        // 3. Fetch the single challenge
+        challenge = await api('/api/challenges/' + slug);
     } catch (err) {
-        list.innerHTML = `<div class="terminal-block">> [ERROR] ${err.message}</div>`;
+        title.textContent = err.status === 404 ? 'Target Not Found' : 'System Error';
+        description.textContent = `> ${err.message}`;
         return;
     }
+
+    // 4. Populate the HTML elements
+    document.title = challenge.title + ' | tourneyd';
+    title.textContent = challenge.title;
+    metaCat.textContent = `[${challenge.category.toUpperCase()}]`;
+    metaPts.textContent = `${challenge.points} PTS`;
+    renderText(description, challenge.description);
     
-    const items = data.challenges;
-    if (items.length === 0) {
-        list.innerHTML = `<div class="terminal-block">> [204 NO_CONTENT] Targets offline.</div>`;
-        return;
+    // Unhide the form now that data has loaded
+    form.style.display = 'block';
+    
+    // Check if previously solved
+    if (solvedSet().has(slug)) {
+        result.textContent = '> [SYS] Target previously compromised on this node.';
+        result.style.color = '#81c995';
     }
 
-    const solved = solvedSet();
-    let activeCategory = 'all';
-
-    function render() {
-        list.textContent = '';
-        for (const c of items) {
-            if (activeCategory !== 'all' && c.category !== activeCategory) continue;
-            const done = solved.has(c.slug);
-            
-            const card = el('a', { href: '/challenge.html?id=' + encodeURIComponent(c.slug), class: 'card' },
-                el('div', {}, 
-                    el('div', { class: 'card-meta' },
-                        el('span', { class: 'badge' }, `[${c.category.toUpperCase()}]`),
-                        el('span', {}, `${c.points} PTS`)
-                    ),
-                    el('h3', { class: 'card-title' }, c.title)
-                ),
-                el('div', { class: 'card-meta', style: 'margin-bottom: 0;' },
-                    el('span', {}, done ? 'STATUS: PWNED' : 'STATUS: SECURE'),
-                    el('span', { style: done ? 'color: #81c995;' : '' }, done ? '[x]' : '[ ]')
-                )
-            );
-            
-            if (done) card.style.borderColor = '#81c995'; // Highlight solved
-            list.append(card);
+    // 5. Handle Flag Submission
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const flag = input.value.trim();
+        if (!flag) return;
+        
+        button.disabled = true;
+        button.textContent = 'AUTH...';
+        
+        try {
+            const reply = await api('/api/challenges/' + slug + '/submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: flag,
+            });
+            if (reply.correct) {
+                result.textContent = '> [ACCESS GRANTED] Flag accepted.';
+                result.style.color = '#81c995';
+                markSolved(slug);
+                input.value = '';
+            } else {
+                result.textContent = '> [ACCESS DENIED] Invalid payload.';
+                result.style.color = 'var(--accent)';
+            }
+        } catch (err) {
+            result.textContent = `> [ERR] ${err.message}`;
+            result.style.color = 'var(--accent)';
+        } finally {
+            button.disabled = false;
+            button.textContent = 'SUBMIT_FLAG';
         }
-    }
-
-    // Attach to your hardcoded UI buttons
-    filterBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            activeCategory = btn.getAttribute('data-category');
-            filterBtns.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            render();
-        });
     });
-
-    render();
 })();
