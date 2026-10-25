@@ -7,13 +7,15 @@
     try {
         data = await api('/api/challenges');
     } catch (err) {
-        list.innerHTML = `<div class="terminal-block">> [ERROR] ${err.message}</div>`;
+        list.textContent = '';
+        list.append(el('div', { class: 'terminal-block' }, `> [ERROR] ${err.message}`));
         return;
     }
     
     const items = data.challenges;
     if (items.length === 0) {
-        list.innerHTML = `<div class="terminal-block">> [204 NO_CONTENT] Targets offline.</div>`;
+        list.textContent = '';
+        list.append(el('div', { class: 'terminal-block' }, '> [204 NO_CONTENT] Targets offline.'));
         return;
     }
 
