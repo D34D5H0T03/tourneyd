@@ -34,8 +34,7 @@
     metaPts.textContent = `${challenge.points} PTS`;
     renderText(description, challenge.description);
     
-    // Unhide the form now that data has loaded
-    form.style.display = 'block';
+    form.hidden = false;
     
     // Check if previously solved
     if (solvedSet().has(slug)) {

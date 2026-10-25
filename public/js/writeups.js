@@ -6,17 +6,17 @@
     try {
         data = await api('/api/writeups?limit=50&offset=0');
     } catch (err) {
-        list.innerHTML = `<div class="terminal-block">> [ERROR] ${err.message}</div>`;
+        list.textContent = '';
+        list.append(el('div', { class: 'terminal-block' }, `> [ERROR] ${err.message}`));
         return;
     }
     
     if (data.total === 0) {
-        // Keep your empty state if no writeups
-        list.innerHTML = `
-        <div class="terminal-block">
-            > [204 NO_CONTENT]: Writeup index is currently empty.<br>
-            > Pending publication of initial CTF post-mortems.
-        </div>`;
+   list.textContent = '';
+        list.append(el('div', { class: 'terminal-block' }, 
+            '> [204 NO_CONTENT]: Writeup index is currently empty.', 
+            el('br'), 
+            '> Pending publication of initial CTF post-mortems.'));
         return;
     }
 
