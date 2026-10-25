@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Writeup Viewer | tourneyd</title>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/common.js" defer></script>
+    <script src="/js/writeup.js" defer></script>
+</head>
+<body>
+    <aside class="sidebar">
+        <div>
+            <a href="/" class="brand">tourneyd</a>
+            <div class="sidebar-label">// Navigation</div>
+            <nav class="nav-links">
+                <a href="/blog/ctf_writeups/writeups.html" class="nav-item"><span>&larr; Back to Archive</span></a>
+            </nav>
+        </div>
+        <div class="sys-status">
+            [MODE] READ_ONLY
+        </div>
+    </aside>
+    <main class="content">
+        <h1 id="title">Loading Document...</h1>
+        <div class="archive-header" id="meta-header">
+            <!-- Populated by JS -->
+        </div>
+        
+        <!-- Hero Text Box -->
+        <pre id="body" class="hero-text-box writeup-text"></pre>
+        
+        <a id="source" href="#" class="subtle-btn" target="_blank" rel="noopener" style="display: none;">
+            <span>// View Original Source</span>
+        </a>
+    </main>
+</body>
+</html>

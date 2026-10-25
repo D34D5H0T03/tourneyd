@@ -6,6 +6,8 @@
     <title>Vulnerability Writeups | tourneyd</title>
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/common.js" defer></script>
+    <script src="/js/writeups.js" defer></script>
 </head>
 <body>
 
@@ -41,22 +43,9 @@
         </div>
 
         <!-- Empty State -->
-        <div class="terminal-block">
-            > [204 NO_CONTENT]: Writeup index is currently empty.<br>
-            > Pending publication of initial CTF post-mortems and binary analysis notes.
+        <div id="writeup-list">
+            <div class="terminal-block">> [SYS] Querying archive database...</div>
         </div>
-
-        <!-- 
-        FUTURE TEMPLATE: Uncomment and duplicate rows inside .archive-board when publishing writeups
-        <div class="archive-board">
-            <a href="/writeup.html?slug=csapp-bomb-lab" class="archive-row">
-                <span class="badge">#001</span>
-                <span><strong>[RE] Defusing the CS:APP Binary Bomb via GDB & Radare2</strong></span>
-                <span style="color: var(--fg-muted);">2026-10-14 | abdul-basit</span>
-            </a>
-        </div>
-        -->
     </main>
-
 </body>
 </html>
