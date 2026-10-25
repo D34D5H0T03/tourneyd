@@ -31,6 +31,6 @@
     const url = w.source_url ? safeExternalUrl(w.source_url) : null;
     if (url) {
         sourceBtn.href = url;
-        sourceBtn.style.display = 'inline-flex';
+        sourceBtn.hidden = false;
     }
 })();
