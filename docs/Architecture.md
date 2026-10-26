@@ -216,7 +216,7 @@ An incremental state machine:
 
 `http_parse(req, buf, len)` consumes only **complete** lines (or body bytes) and returns how many bytes it used. The caller keeps the rest. The parser therefore holds no partial-line state of its own, and feeding it one byte at a time gives exactly the same result as feeding it everything at once. That property is what lets it run unchanged under an event loop, and it is checked by the fuzzer.
 
-Every field has a fixed size, and every length is checked before any copy. The full list of rules (token header names, `Content-Length` handling, duplicate and conflicting headers, `Transfer-Encoding`, `Host` requirement) is in [security.md](security.md#41-parsing-and-request-smuggling).
+Every field has a fixed size, and every length is checked before any copy. The full list of rules (token header names, `Content-Length` handling, duplicate and conflicting headers, `Transfer-Encoding`, `Host` requirement) is in [Security.md](Security.md#41-parsing-and-request-smuggling).
 
 The request object owns its data: fixed arrays for path, query and headers, and a heap buffer for the body (freed by `http_request_free`). It is about 31 KB, so the handler allocates it on the heap.
 
@@ -243,11 +243,11 @@ Handlers fill an `http_response_t` (status, up to 16 headers, an owned body). Th
 
 ### Static files (`app/static_files.c`)
 
-The fallback handler. The pipeline (decode, reject `/.`, resolve with `realpath`, require the result inside the resolved document root, `open` then `fstat`, regular files only, size cap) is described step by step in [security.md](security.md#42-static-files-and-path-traversal). Every rejection is a plain `404`.
+The fallback handler. The pipeline (decode, reject `/.`, resolve with `realpath`, require the result inside the resolved document root, `open` then `fstat`, regular files only, size cap) is described step by step in [Security.md](Security.md#42-static-files-and-path-traversal). Every rejection is a plain `404`.
 
 ### API handlers (`app/*_api.c`)
 
-Thin: validate the input, call a model function, translate its result code into a status, build JSON with the JSON writer. `api_util.c` holds the shared pieces (sending JSON, error bodies, query integers, slug extraction from the path). The endpoints are documented in [api.md](api.md).
+Thin: validate the input, call a model function, translate its result code into a status, build JSON with the JSON writer. `api_util.c` holds the shared pieces (sending JSON, error bodies, query integers, slug extraction from the path). The endpoints are documented in [Api.md](Api.md).
 
 ### Routes (`app/routes.c`)
 
@@ -266,7 +266,7 @@ SQLite is vendored and compiled with its own flags (`SQLITE_THREADSAFE=1`, `SQLI
 
 ### Migrations (`db/migrate.c`)
 
-Numbered, forward-only SQL files in `migrations/` (`NNN_name.sql`). The schema version lives in `PRAGMA user_version`. Each file runs in its own transaction together with the version bump, so a failure leaves neither half a schema change nor a new version number. The runner refuses duplicate numbers and refuses to start an older server against a newer database. Details and the workflow are in [schema.md](schema.md).
+Numbered, forward-only SQL files in `migrations/` (`NNN_name.sql`). The schema version lives in `PRAGMA user_version`. Each file runs in its own transaction together with the version bump, so a failure leaves neither half a schema change nor a new version number. The runner refuses duplicate numbers and refuses to start an older server against a newer database. Details and the workflow are in [Schema.md](Schema.md).
 
 ### Models (`db/models/*.c`)
 
@@ -342,11 +342,11 @@ The habits that make this cheap are already in the code: no handler touches a so
 
 ## 15. Cookbook
 
-**Add an API route.** Write a handler `void h(const http_request_t *, http_response_t *)` in `app/`, declare it in a header, register it in `routes.c` (with `ROUTE_BLOCKING` if it touches the database), and document it in `api.md`. Validate input before calling a model, and map result codes to statuses.
+**Add an API route.** Write a handler `void h(const http_request_t *, http_response_t *)` in `app/`, declare it in a header, register it in `routes.c` (with `ROUTE_BLOCKING` if it touches the database), and document it in `Api.md`. Validate input before calling a model, and map result codes to statuses.
 
 **Add a model function.** Put it in `db/models/`. Use `model_prepare`, bind every value, copy results out before finalizing, return a `DB_*` code, and never put secrets in the returned struct. Add a case to the model's unit test, including a hostile-input case.
 
-**Change the schema.** Add `migrations/NNN_name.sql` with the next number. Never edit an applied migration. Rebuild a table (create, copy, drop, rename) when SQLite's `ALTER TABLE` cannot do the change. Update [schema.md](schema.md) and the migration test.
+**Change the schema.** Add `migrations/NNN_name.sql` with the next number. Never edit an applied migration. Rebuild a table (create, copy, drop, rename) when SQLite's `ALTER TABLE` cannot do the change. Update [Schema.md](Schema.md) and the migration test.
 
 **Add a config key.** Add the field to `config_t`, the default, `config_set` (with its range), validation if it depends on a compile-time cap, and `config/server.conf.example`. Pass it to the module that needs it through that module's option struct, not by including `config.h` there.
 

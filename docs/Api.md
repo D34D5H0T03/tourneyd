@@ -3,7 +3,7 @@
 **Applies to:** tourneyd `v1.0`
 **Last updated:** 2026-10-26
 
-A small JSON API served by the same process as the static site. All endpoints are same-origin: no CORS headers are sent, so other origins cannot read the responses. There are no accounts, so no endpoint needs authentication, and nothing in the API creates or changes content (that is done offline with `tourneyctl`, see [operations.md](operations.md)).
+A small JSON API served by the same process as the static site. All endpoints are same-origin: no CORS headers are sent, so other origins cannot read the responses. There are no accounts, so no endpoint needs authentication, and nothing in the API creates or changes content (that is done offline with `tourneyctl`, see [Operations.md](Operations.md)).
 
 ## Conventions
 
@@ -36,13 +36,13 @@ Errors from API handlers are JSON with the same shape everywhere:
 | 503 | The database is busy or unavailable. Retry shortly. |
 | 500 | Unexpected internal failure |
 
-Errors raised before a handler runs (a malformed HTTP request, a request that is too large, a timeout) use the server's HTML error pages, and the status codes are listed in [security.md](security.md#status-codes-returned-for-rejected-input).
+Errors raised before a handler runs (a malformed HTTP request, a request that is too large, a timeout) use the server's HTML error pages, and the status codes are listed in [Security.md](Security.md#status-codes-returned-for-rejected-input).
 
 ---
 
 ## Challenges
 
-The API currently serves the single event `practice`. The schema supports many events, and selecting one will be a query parameter (see [schema.md](schema.md#adding-events)).
+The API currently serves the single event `practice`. The schema supports many events, and selecting one will be a query parameter (see [Schema.md](Schema.md#adding-events)).
 
 ### `GET /api/challenges`
 
@@ -99,7 +99,7 @@ A wrong flag is a normal answer, not an error: the status is `200` and the body 
 | 429 | 30 attempts in the last 60 seconds on this challenge. This applies to every flag, including the correct one. `Retry-After: 60` |
 | 503 | Database busy or unavailable. Try again. |
 
-Every attempt is recorded as `(challenge, correct, time)`. The submitted text is never stored, echoed or logged. The limit is **per challenge and global**, not per person, because there are no accounts yet (see the known limitations in [security.md](security.md#6-known-limitations)).
+Every attempt is recorded as `(challenge, correct, time)`. The submitted text is never stored, echoed or logged. The limit is **per challenge and global**, not per person, because there are no accounts yet (see the known limitations in [Security.md](Security.md#6-known-limitations)).
 
 ---
 

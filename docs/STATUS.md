@@ -27,12 +27,12 @@ make test SAN=1                    # should be green before anything else
 scripts/seed-dev.sh && ./build/tourneyd      # then open http://127.0.0.1:8080
 ```
 
-Documentation map: [architecture.md](architecture.md) (how it fits together), [operations.md](operations.md) (config, `tourneyctl`, deployment), [testing.md](testing.md), [security.md](security.md), [schema.md](schema.md), [api.md](api.md), [benchmarks.md](benchmarks.md).
+Documentation map: [Architecture.md](Architecture.md) (how it fits together), [Operations.md](Operations.md) (config, `tourneyctl`, deployment), [Testing.md](Testing.md), [Security.md](Security.md), [Schema.md](Schema.md), [Api.md](Api.md), [Benchmarks.md](Benchmarks.md).
 
 ## Next steps, in order
 
 1. **Break and reading.** Computer Networking chapters 4 to 8 (chapter 8 matters most for TLS: re-read its TLS section right before the TLS phase). Hands-on pairings: `ip route`, `traceroute` and `tcpdump` for the network layer, `ip neigh` and Wireshark for the link layer, `openssl s_client` and Wireshark for the TLS handshake. Turn each pwn.college web lesson into a regression test against this server where it applies.
-2. **Run the benchmark experiments** in [benchmarks.md](benchmarks.md): the hypotheses about the saturation test, and the pending database-backed endpoints. Write predictions first.
+2. **Run the benchmark experiments** in [Benchmarks.md](Benchmarks.md): the hypotheses about the saturation test, and the pending database-backed endpoints. Write predictions first.
 3. **Lab endpoints** (`/lab/whoami`, `/lab/counter`, `/lab/db-counter`, `/lab/slow`, `/lab/big`, `/lab/upload`), registered only when `lab_enabled` is on. They are experiments whose results differ by concurrency model.
 4. **Thread model** (`v1.1`): thread per connection, then a pool with a work queue. Per-thread database connections (already how the data layer works). ThreadSanitizer on the shared-counter experiment. Replace `sigprocmask` with `pthread_sigmask` and the child-cap logic with a thread cap.
 5. **Epoll** (`v1.2`): non-blocking sockets, per-connection state, partial writes, timers instead of socket timeouts, then a worker pool plus `eventfd` for `ROUTE_BLOCKING` handlers. Compare against the benchmark table.
@@ -52,7 +52,7 @@ Documentation map: [architecture.md](architecture.md) (how it fits together), [o
 | Rate limit stored in the database | Memory is not shared across forked children |
 | Strict CSP, DOM-only rendering | A single mistake should not be enough for XSS |
 
-The full list with trade-offs is in [architecture.md](architecture.md#13-design-decisions).
+The full list with trade-offs is in [Architecture.md](Architecture.md#13-design-decisions).
 
 ## Known issues and rough edges
 
@@ -64,22 +64,22 @@ The full list with trade-offs is in [architecture.md](architecture.md#13-design-
 - Logs are not rotated, and only the parser is fuzzed.
 - The seed script contains every solution. Do not reuse its flags on a real site.
 
-More in [security.md](security.md#6-known-limitations).
+More in [Security.md](Security.md#6-known-limitations).
 
 ## Open questions
 
 - Should the API select the event with `?event=<slug>` or with path segments when events are added?
 - When accounts arrive, per-address limits through a proxy need a trustworthy client address. Is `CF-Connecting-IP` enough behind a tunnel, or does it need the proxy's address list?
-- Is the benchmark collapse at 200 connections caused by worker pinning, idle timeouts or fork churn? (See the experiments in [benchmarks.md](benchmarks.md).)
+- Is the benchmark collapse at 200 connections caused by worker pinning, idle timeouts or fork churn? (See the experiments in [Benchmarks.md](Benchmarks.md).)
 
 ## Restart checklist
 
-- [ ] Read this file, then skim `architecture.md` sections 2 and 5
+- [ ] Read this file, then skim `Architecture.md` sections 2 and 5
 - [ ] `git status` is clean, `main` is up to date, and `git tag` shows `v1.0`
 - [ ] `make clean && make && make build/tourneyctl`
-- [ ] `make test SAN=1` passes (record the commit in `testing.md`)
+- [ ] `make test SAN=1` passes (record the commit in `Testing.md`)
 - [ ] `make fuzz` runs clean
-- [ ] Rerun the fork benchmarks and confirm they match `benchmarks.md` on this machine (a different power profile or background load changes the numbers)
+- [ ] Rerun the fork benchmarks and confirm they match `Benchmarks.md` on this machine (a different power profile or background load changes the numbers)
 - [ ] Pick the next step above, create a branch for it, and write the first three lines of what you will do in this file before starting
 - [ ] End every session by updating "Next steps" so the next restart is cheap
 
@@ -87,4 +87,4 @@ More in [security.md](security.md#6-known-limitations).
 
 - About four hours of project coding a day at most, with a fixed stop time, and at least one full day a week with nothing project-related.
 - If something does not work after an hour, write down what was tried and stop.
-- Predict before measuring, break things on purpose, and write down what surprised me in `lab-notes.md`.
+- Predict before measuring, break things on purpose, and write down what surprised me in `Lab-notes.md`.

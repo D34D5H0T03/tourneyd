@@ -63,7 +63,7 @@ printf '%s' 'flag{my-secret}' | ./build/tourneyctl challenge add \
 ./build/tourneyctl writeup add --slug my-notes --title "My notes" --file notes.md
 ```
 
-More in [docs/operations.md](docs/operations.md).
+More in [docs/Operations.md](docs/Operations.md).
 
 ## Configuration
 
@@ -73,7 +73,7 @@ Settings come from built-in defaults, then `config/server.conf` (if it exists, o
 ./build/tourneyd -c config/server.conf -p 9090 -b 127.0.0.1 -r public
 ```
 
-Unknown keys and out-of-range values stop startup with a message that names the line. The full key reference is in [docs/operations.md](docs/operations.md#configuration-reference).
+Unknown keys and out-of-range values stop startup with a message that names the line. The full key reference is in [docs/Operations.md](docs/Operations.md#configuration-reference).
 
 ## Repository layout
 
@@ -110,7 +110,7 @@ tourneyd/
 5. A **handler** fills a response object. It never touches the socket. API handlers call the **model layer**, the only code that contains SQL.
 6. The connection handler adds the security headers, sends the head and body, writes one access-log line, and decides whether to keep the connection.
 
-The full picture, with diagrams and design decisions, is in [docs/architecture.md](docs/architecture.md).
+The full picture, with diagrams and design decisions, is in [docs/Architecture.md](docs/Architecture.md).
 
 ## Concurrency models
 
@@ -128,7 +128,7 @@ make clean && make CONCURRENCY=serial
 | `thread` | planned (`v1.1`) | pthreads with a thread pool. |
 | `epoll` | planned (`v1.2`) | Non-blocking event loop, with a worker pool for blocking database handlers. |
 
-Measured results for the fork model are in [docs/benchmarks.md](docs/benchmarks.md).
+Measured results for the fork model are in [docs/Benchmarks.md](docs/Benchmarks.md).
 
 ## Testing
 
@@ -138,19 +138,19 @@ make test SAN=1         # the same under AddressSanitizer and UBSan
 make fuzz               # parser fuzzer (gcc driver); `make fuzz-clang` for libFuzzer
 ```
 
-What each suite checks, and how to run one suite alone, is in [docs/testing.md](docs/testing.md).
+What each suite checks, and how to run one suite alone, is in [docs/Testing.md](docs/Testing.md).
 
 ## Documentation
 
 | Document | Contents |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | Layers, request lifecycle, concurrency, data layer, design decisions, what changes for threads and epoll |
-| [docs/security.md](docs/security.md) | Threat model, defenses, limits, verification results, known limitations |
-| [docs/api.md](docs/api.md) | The public JSON API |
-| [docs/schema.md](docs/schema.md) | Database schema, conventions, migrations, how users and events will be added |
-| [docs/operations.md](docs/operations.md) | Configuration reference, `tourneyctl`, seeding, running, deploying behind a tunnel, backups |
-| [docs/testing.md](docs/testing.md) | Test inventory, how to run and extend it, fuzzing, manual checks |
-| [docs/benchmarks.md](docs/benchmarks.md) | Methodology and measured results |
+| [docs/Architecture.md](docs/Architecture.md) | Layers, request lifecycle, concurrency, data layer, design decisions, what changes for threads and epoll |
+| [docs/Security.md](docs/Security.md) | Threat model, defenses, limits, verification results, known limitations |
+| [docs/Api.md](docs/Api.md) | The public JSON API |
+| [docs/Schema.md](docs/Schema.md) | Database schema, conventions, migrations, how users and events will be added |
+| [docs/Operations.md](docs/Operations.md) | Configuration reference, `tourneyctl`, seeding, running, deploying behind a tunnel, backups |
+| [docs/Testing.md](docs/Testing.md) | Test inventory, how to run and extend it, fuzzing, manual checks |
+| [docs/Benchmarks.md](docs/Benchmarks.md) | Methodology and measured results |
 | [docs/STATUS.md](docs/STATUS.md) | Where the project stands, next steps, and a restart checklist |
 
 ## Roadmap

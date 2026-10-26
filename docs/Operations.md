@@ -179,7 +179,7 @@ cloudflared tunnel --url http://127.0.0.1:8080
 
 Use `127.0.0.1`, not `localhost`: `localhost` can resolve to `::1` first, and the server binds IPv4. If the tunnel keeps reconnecting, try `--protocol http2` (the default transport uses UDP, which some networks block).
 
-**Before sharing the URL,** go through the checklist in [security.md](security.md#7-operational-checklist). In particular: a release build, a real database (not the development seed), no demo routes, and an access log you keep private.
+**Before sharing the URL,** go through the checklist in [Security.md](Security.md#7-operational-checklist). In particular: a release build, a real database (not the development seed), no demo routes, and an access log you keep private.
 
 **Do not run load tests or attack scripts through the tunnel.** Run them against `127.0.0.1`.
 
@@ -188,7 +188,7 @@ For a stable address you need a named tunnel and a domain on Cloudflare, which i
 ## Data, backups and migrations
 
 - **Location.** `data/tourneyd.db` by default, plus `-wal` and `-shm` companion files while the server runs. The directory is created `0700` and the file `0600`. Keep it outside `public/`.
-- **Migrations** run automatically at startup and with `tourneyctl migrate`. See [schema.md](schema.md#migrations) for the rules.
+- **Migrations** run automatically at startup and with `tourneyctl migrate`. See [Schema.md](Schema.md#migrations) for the rules.
 - **Backup (safe while running):**
 
 ```bash

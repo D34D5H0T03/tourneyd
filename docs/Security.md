@@ -254,7 +254,7 @@ HSTS is deliberately not sent yet. It will be added once the site has its own do
 
 ## 5. Verification
 
-All suites below pass at `v1.0`. Record the commit they were last run against in [testing.md](testing.md).
+All suites below pass at `v1.0`. Record the commit they were last run against in [Testing.md](Testing.md).
 
 ### 5.1 Unit tests (`make test`)
 
@@ -303,7 +303,7 @@ Runs against a fresh database seeded through `tourneyctl`:
 
 ### 5.5 Frontend suite (`tests/integration/test_frontend.sh`)
 
-A static lint (no inline styles, event handlers or scripts; no HTML-string sinks in the JS; every referenced file exists) plus checks that each page is served with the right content type and a CSP header. A manual browser checklist (console clean under the CSP, a challenge titled `<img src=x onerror=alert(1)>` renders as text, keyboard navigation, dark mode) is in [testing.md](testing.md).
+A static lint (no inline styles, event handlers or scripts; no HTML-string sinks in the JS; every referenced file exists) plus checks that each page is served with the right content type and a CSP header. A manual browser checklist (console clean under the CSP, a challenge titled `<img src=x onerror=alert(1)>` renders as text, keyboard navigation, dark mode) is in [Testing.md](Testing.md).
 
 ### 5.6 Fuzzing (`make fuzz`)
 
@@ -322,7 +322,7 @@ The server was run behind a Cloudflare quick tunnel on Ubuntu, and was reached f
 
 ### 5.8 Performance baseline
 
-Behavior under normal load and at saturation (200 connections against a cap of 64) is recorded in [benchmarks.md](benchmarks.md), to compare against the later models.
+Behavior under normal load and at saturation (200 connections against a cap of 64) is recorded in [Benchmarks.md](Benchmarks.md), to compare against the later models.
 
 ### 5.9 Reproducing everything
 
@@ -357,7 +357,7 @@ These are deliberate omissions or accepted trade-offs, not forgotten items.
 | Request body is allocated when the headers finish | Bounded by the body limit and the child cap here. It must become incremental in the epoll version, where one process holds thousands of connections. |
 | A database connection is opened per forked child on first use | Costs time per connection under fork. Keep-alive amortizes it. |
 | Writeups are shown as preformatted text | There is no Markdown rendering, which also means there is no rendering attack surface. A renderer must build DOM nodes, never HTML strings. |
-| Only one event (`practice`) is reachable through the API | The schema supports many events. Adding event selection is a small change (see [schema.md](schema.md)). |
+| Only one event (`practice`) is reachable through the API | The schema supports many events. Adding event selection is a small change (see [Schema.md](Schema.md)). |
 | No HTTP/2, no compression | |
 | Logs are not rotated | Redirect to a file and rotate externally. |
 | Configuration values cannot contain `#` | Everything after it is treated as a comment. |
